@@ -232,7 +232,7 @@ app.get('/api/qbo/invoices', async (req, res) => {
   }
   
   try {
-    const response = await fetch(`https://uickbooks.api.intuit.com/v3/company/${qboTokens.realmId}/query?query=SELECT * FROM Invoice`, {
+    const response = await fetch(`https://quickbooks.api.intuit.com/v3/company/${qboTokens.realmId}/query?query=SELECT * FROM Invoice`, {
       headers: {
         'Authorization': `Bearer ${qboTokens.access_token}`,
         'Accept': 'application/json'
