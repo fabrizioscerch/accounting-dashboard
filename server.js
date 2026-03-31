@@ -232,7 +232,7 @@ app.get('/api/qbo/invoices', async (req, res) => {
   }
   
   try {
-    const response = await fetch(`https://sandbox-quickbooks.api.intuit.com/v3/company/${qboTokens.realmId}/query?query=SELECT * FROM Invoice`, {
+    const response = await fetch(`https://uickbooks.api.intuit.com/v3/company/${qboTokens.realmId}/query?query=SELECT * FROM Invoice`, {
       headers: {
         'Authorization': `Bearer ${qboTokens.access_token}`,
         'Accept': 'application/json'
@@ -261,7 +261,7 @@ app.get('/api/qbo/bills', async (req, res) => {
   }
   
   try {
-    const response = await fetch(`https://sandbox-quickbooks.api.intuit.com/v3/company/${qboTokens.realmId}/query?query=SELECT * FROM Bill`, {
+    const response = await fetch(`https://quickbooks.api.intuit.com/v3/company/${qboTokens.realmId}/query?query=SELECT * FROM Bill`, {
       headers: {
         'Authorization': `Bearer ${qboTokens.access_token}`,
         'Accept': 'application/json'
@@ -296,7 +296,7 @@ app.post('/api/qbo/invoices', async (req, res) => {
   try {
     // First, find or create customer
 console.log('Looking for customer:', client);     
-const customerResponse = await fetch(`https://sandbox-quickbooks.api.intuit.com/v3/company/${qboTokens.realmId}/query?query=SELECT * FROM Customer WHERE DisplayName='${client}'`, {
+const customerResponse = await fetch(`https://quickbooks.api.intuit.com/v3/company/${qboTokens.realmId}/query?query=SELECT * FROM Customer WHERE DisplayName='${client}'`, {
       headers: {
         'Authorization': `Bearer ${qboTokens.access_token}`,
         'Accept': 'application/json'
@@ -315,7 +315,7 @@ let customerId;
 } else {
   // Create new customer
   console.log('Creating new customer...');
-const newCustomerResponse = await fetch(`https://sandbox-quickbooks.api.intuit.com/v3/company/${qboTokens.realmId}/customer`, {
+const newCustomerResponse = await fetch(`https://quickbooks.api.intuit.com/v3/company/${qboTokens.realmId}/customer`, {
   method: 'POST',
   headers: {
     'Authorization': `Bearer ${qboTokens.access_token}`,
@@ -335,7 +335,7 @@ console.log('Final customer ID:', customerId);
     }
     
     // Create invoice
-const invoiceResponse = await fetch(`https://sandbox-quickbooks.api.intuit.com/v3/company/${qboTokens.realmId}/invoice`, {
+const invoiceResponse = await fetch(`https://quickbooks.api.intuit.com/v3/company/${qboTokens.realmId}/invoice`, {
   method: 'POST',
   headers: {
     'Authorization': `Bearer ${qboTokens.access_token}`,
