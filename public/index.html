@@ -195,9 +195,9 @@
     <label>Client Name</label>
     <select id="invoice-client" required>
         <option value="">Select a client...</option>
-        <option value="__NEW__">+ Add New Client</option>
+       
     </select>
-    <input type="text" id="invoice-client-new" placeholder="Enter new client name" style="display: none; margin-top: 8px;">
+    
 </div>
                 <div class="form-group">
                     <label>Amount (USD)</label>
@@ -208,10 +208,7 @@
                     <input type="date" id="invoice-due">
                 </div>
                 <div class="form-group">
-            <label>Due Date</label>
-            <input type="date" id="invoice-due">
-        </div>
-        <div class="form-group">
+            
             <label>Service Item</label>
             <select id="invoice-item" required>
                 <option value="">Select a service...</option>
@@ -221,10 +218,7 @@
             <label>Description</label>
             <textarea id="invoice-description" placeholder="Service description..."></textarea>
         </div>
-                <div class="form-group">
-                    <label>Description</label>
-                    <textarea id="invoice-description" placeholder="Service description..."></textarea>
-                </div>
+                
                 <div class="modal-actions">
                     <button class="btn btn-secondary" onclick="closeModal('new-invoice-modal')">Cancel</button>
                     <button class="btn btn-primary" onclick="createInvoice()">Create Invoice</button>
@@ -354,8 +348,59 @@
                         }
                     }
                 }
+                 // Load customers and items for invoice creation
+        if (connected.qbo) {
+            try {
+                // Load customers
+                const customersResponse = await fetch('/api/qbo/customers');
+                if (customersResponse.ok) {
+                    const customersResult = await customersResponse.json();
+                    const customers = customersResult.QueryResponse?.Customer || [];
+                    
+                    // Populate the client dropdown
+                    const clientSelect = document.getElementById('invoice-client');
+                    if (clientSelect) {
+                        clientSelect.innerHTML = '<option value="">Select a client...</option>';
+                        
+                        customers.forEach(customer => {
+                            if (customer.Active) {
+                                const option = document.createElement('option');
+                                option.value = customer.DisplayName || customer.Name;
+                                option.textContent = customer.DisplayName || customer.Name;
+                                clientSelect.appendChild(option);
+                            }
+                        });
+                    }
+                }
+
+                // Load items
+                const itemsResponse = await fetch('/api/qbo/items');
+                if (itemsResponse.ok) {
+                    const itemsResult = await itemsResponse.json();
+                    const items = itemsResult.QueryResponse?.Item || [];
+                    
+                    // Populate the service dropdown
+                    const itemSelect = document.getElementById('invoice-item');
+                    if (itemSelect) {
+                        itemSelect.innerHTML = '<option value="">Select a service...</option>';
+                        
+                        items.forEach(item => {
+                            if (item.Type === 'Service' && item.Active) {
+                                const option = document.createElement('option');
+                                option.value = JSON.stringify({id: item.Id, name: item.Name});
+                                option.textContent = item.Name;
+                                itemSelect.appendChild(option);
+                            }
+                        });
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading dropdown data:', error);
+            }
+        }
+        
+        renderDashboard();
                 
-                renderDashboard();
             } catch (error) {
                 console.error('Failed to load dashboard data:', error);
             }
