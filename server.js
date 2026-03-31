@@ -275,6 +275,26 @@ app.get('/api/qbo/items', async (req, res) => {
   }
 });
 
+app.get('/api/qbo/customers', async (req, res) => {
+  if (!qboTokens?.access_token) {
+    return res.status(401).json({ error: 'QBO not connected' });
+  }
+  
+  try {
+    const response = await fetch(`https://quickbooks.api.intuit.com/v3/company/${qboTokens.realmId}/query?query=SELECT * FROM Customer`, {
+      headers: {
+        'Authorization': `Bearer ${qboTokens.access_token}`,
+        'Accept': 'application/json'
+      }
+    });
+    
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch customers' });
+  }
+});
+
 app.get('/api/qbo/bills', async (req, res) => {
   if (!qboTokens?.access_token) {
     return res.status(401).json({ error: 'QBO not connected' });
@@ -310,7 +330,7 @@ app.post('/api/qbo/invoices', async (req, res) => {
     return res.status(401).json({ error: 'QBO not connected' });
   }
   
-  const { client, amount, dueDate, description } = req.body;
+  const { client, amount, dueDate, description, itemId, itemName } = req.body;
   console.log('Invoice creation request:', { client, amount, dueDate, description });
 
   try {
@@ -369,8 +389,8 @@ const invoiceResponse = await fetch(`https://quickbooks.api.intuit.com/v3/compan
       Amount: amount,
       DetailType: "SalesItemLineDetail",
       SalesItemLineDetail: {
-        ItemRef: { value: "1", name: "Services" }
-      }
+  ItemRef: { value: itemId, name: itemName }
+}
     }]
   })
 });

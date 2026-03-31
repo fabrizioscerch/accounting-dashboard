@@ -192,9 +192,13 @@
             <div class="modal-content">
                 <div class="modal-header">New Invoice</div>
                 <div class="form-group">
-                    <label>Client Name</label>
-                    <input type="text" id="invoice-client" placeholder="Enter client name">
-                </div>
+    <label>Client Name</label>
+    <select id="invoice-client" required>
+        <option value="">Select a client...</option>
+        <option value="__NEW__">+ Add New Client</option>
+    </select>
+    <input type="text" id="invoice-client-new" placeholder="Enter new client name" style="display: none; margin-top: 8px;">
+</div>
                 <div class="form-group">
                     <label>Amount (USD)</label>
                     <input type="number" id="invoice-amount" placeholder="0.00" step="0.01">
@@ -203,6 +207,20 @@
                     <label>Due Date</label>
                     <input type="date" id="invoice-due">
                 </div>
+                <div class="form-group">
+            <label>Due Date</label>
+            <input type="date" id="invoice-due">
+        </div>
+        <div class="form-group">
+            <label>Service Item</label>
+            <select id="invoice-item" required>
+                <option value="">Select a service...</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Description</label>
+            <textarea id="invoice-description" placeholder="Service description..."></textarea>
+        </div>
                 <div class="form-group">
                     <label>Description</label>
                     <textarea id="invoice-description" placeholder="Service description..."></textarea>
@@ -460,35 +478,54 @@
         }
 
         // Create invoice
-        async function createInvoice() {
-            const client = document.getElementById('invoice-client').value;
-            const amount = parseFloat(document.getElementById('invoice-amount').value);
-            const dueDate = document.getElementById('invoice-due').value;
-            const description = document.getElementById('invoice-description').value;
-            
-            if (!client || !amount || !dueDate) {
-                alert('Please fill in all required fields');
-                return;
-            }
-            
-            try {
-                const response = await fetch('/api/qbo/invoices', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ client, amount, dueDate, description })
-                });
-                
-                if (response.ok) {
-                    closeModal('new-invoice-modal');
-                    await loadDashboardData();
-                } else {
-                    alert('Failed to create invoice');
-                }
-            } catch (error) {
-                console.error('Create invoice error:', error);
-                alert('Error creating invoice');
-            }
+       async function createInvoice() {
+    const clientSelect = document.getElementById('invoice-client');
+    const newClientInput = document.getElementById('invoice-client-new');
+    
+    let client;
+    if (clientSelect.value === '__NEW__') {
+        client = newClientInput.value.trim();
+    } else {
+        client = clientSelect.value;
+    }
+    
+    const amount = parseFloat(document.getElementById('invoice-amount').value);
+    const dueDate = document.getElementById('invoice-due').value;
+    const description = document.getElementById('invoice-description').value;
+    const selectedItem = document.getElementById('invoice-item').value;
+    
+    if (!client || !amount || !dueDate || !selectedItem) {
+        alert('Please fill in all required fields');
+        return;
+    }
+    
+    const itemData = JSON.parse(selectedItem);
+    
+    try {
+        const response = await fetch('/api/qbo/invoices', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                client, 
+                amount, 
+                dueDate, 
+                description,
+                itemId: itemData.id,
+                itemName: itemData.name
+            })
+        });
+        
+        if (response.ok) {
+            closeModal('new-invoice-modal');
+            await loadDashboardData();
+        } else {
+            alert('Failed to create invoice');
         }
+    } catch (error) {
+        console.error('Create invoice error:', error);
+        alert('Error creating invoice');
+    }
+}
 
         // Placeholder functions
         function markPaid(invoiceId) {
