@@ -12,7 +12,7 @@
 
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; padding: 20px 0; border-bottom: 1px solid #e5e7eb; }
         .header-left { display: flex; align-items: center; gap: 16px; }
-        .logo { width: 125px; height: 125px; border-radius: 8px; object-fit: contain; }
+        .logo { width: 140px; height: 140px; border-radius: 8px; object-fit: contain; }
         .title-section { display: flex; flex-direction: column; }
         .title-line1 { font-size: 24px; font-weight: 600; margin: 0; line-height: 1.2; color: #1F4E79; }
         .title-line2 { font-size: 24px; font-weight: 600; margin: 0; line-height: 1.2; color: #1F4E79; text-align: center; }
@@ -88,7 +88,7 @@
                 <img src="logo.png" alt="NauticALL Logo" class="logo">
                 <div class="title-section">
                     <h1 class="title-line1">Corporate Accounting </h1>
-                    <h1 class="title-line2">Dashboard</h1>
+                    <h1 class="title-line2">DASHBOARD</h1>
                 </div>
             </div>
             <div class="connections" id="connections">
@@ -491,8 +491,8 @@ let selectedQBOId = null;
         }
 
         function renderOverview() {
-            const totalReceivable = invoicesData.reduce((sum, inv) => sum + (inv.TotalAmt || 0), 0);
-            const totalPayable = billsData.reduce((sum, bill) => sum + (bill.TotalAmt || 0), 0);
+const totalReceivable = invoicesData.reduce((sum, inv) => sum + (parseFloat(inv.Balance) || 0), 0);
+const totalPayable = billsData.reduce((sum, bill) => sum + (parseFloat(bill.Balance) || 0), 0);            
             const overdueCount = invoicesData.filter(inv => parseFloat(inv.Balance) > 0 && daysDiff(inv.DueDate) < 0).length;
 
             document.getElementById('overview-metrics').innerHTML = `
