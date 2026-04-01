@@ -104,10 +104,10 @@ app.get('/auth/qbo', (req, res) => {
 
 app.get('/qbo/callback', async (req, res) => {
   console.log('QBO Callback received:', req.query);
-  const { code, state, realmId } = req.query;
+  const { code, realmId } = req.query;
 
-  if (!sessions.has(state)) {
-    return res.status(400).json({ error: 'Invalid state parameter' });
+  if (!code || !realmId) {
+    return res.status(400).json({ error: 'Missing code or realmId' });
   }
 
   try {
@@ -128,7 +128,6 @@ app.get('/qbo/callback', async (req, res) => {
     const tokens = await tokenResponse.json();
     console.log('Tokens received:', tokens);
     qboTokens = { ...tokens, realmId, timestamp: Date.now() };
-    sessions.delete(state);
 
     res.redirect('/?qbo=connected');
   } catch (error) {
