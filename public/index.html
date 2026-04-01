@@ -4,12 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NauticALL Dashboard</title>
-	<link rel="icon" type="image/png" href="logo.png">    
+	<link rel="icon" type="image/png" href="logo.png">
 	<style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'Gotham Book', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1a202c; }
         .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
-        
+
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; padding: 20px 0; border-bottom: 1px solid #e5e7eb; }
         .header-left { display: flex; align-items: center; gap: 16px; }
         .logo { width: 120px; height: 120px; border-radius: 8px; object-fit: contain; }
@@ -20,7 +20,7 @@
         .connection-badge { padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 500; border: 1px solid; }
         .connected { background: #d1fae5; color: #065f46; border-color: #10b981; }
         .disconnected { background: #fee2e2; color: #991b1b; border-color: #ef4444; }
-        
+
         .nav { display: flex; gap: 8px; margin-bottom: 24px; }
         .nav button { padding: 8px 16px; border: 1px solid #d1d5db; background: white; border-radius: 6px; cursor: pointer; font-size: 14px; }
         .nav button.active { background: #3b82f6; color: white; border-color: #3b82f6; }
@@ -91,7 +91,6 @@
                 <div class="connection-badge disconnected" id="cashpro-status">CashPro Disconnected</div>
             </div>
         </header>
-
         <div id="connection-setup" class="connection-setup">
             <h3>Connect your accounts</h3>
             <p>Connect QuickBooks Online and CashPro to start using the dashboard</p>
@@ -100,23 +99,20 @@
                 <button class="btn btn-secondary" onclick="connectCashPro()">Connect CashPro</button>
             </div>
         </div>
-
         <nav class="nav" id="main-nav" style="display: none;">
-            <button class="active" onclick="showPanel('overview')">Overview</button>
-            <button onclick="showPanel('receivables')">Receivables</button>
-            <button onclick="showPanel('payables')">Payables</button>
-            <button onclick="showPanel('reconcile')">Reconciliation</button>
+            <button class="active" onclick="showPanel('overview', event)">Overview</button>
+            <button onclick="showPanel('receivables', event)">Receivables</button>
+            <button onclick="showPanel('payables', event)">Payables</button>
+            <button onclick="showPanel('reconcile', event)">Reconciliation</button>
         </nav>
-
         <main id="dashboard-content" style="display: none;">
             <!-- Overview Panel -->
             <div id="overview" class="panel active">
                 <div class="metrics" id="overview-metrics"></div>
-                
                 <div class="section">
                     <div class="section-header">
                         <span class="section-title">Pending Approvals</span>
-                        <button class="btn btn-secondary" onclick="showPanel('payables')">View All</button>
+                        <button class="btn btn-secondary" onclick="showPanel('payables', event)">View All</button>
                     </div>
                     <table>
                         <thead>
@@ -125,11 +121,10 @@
                         <tbody id="pending-approvals"></tbody>
                     </table>
                 </div>
-
                 <div class="section">
                     <div class="section-header">
                         <span class="section-title">Overdue Invoices</span>
-                        <button class="btn btn-secondary" onclick="showPanel('receivables')">View All</button>
+                        <button class="btn btn-secondary" onclick="showPanel('receivables', event)">View All</button>
                     </div>
                     <table>
                         <thead>
@@ -139,7 +134,6 @@
                     </table>
                 </div>
             </div>
-
             <!-- Receivables Panel -->
             <div id="receivables" class="panel">
                 <div class="section">
@@ -155,7 +149,6 @@
                     </table>
                 </div>
             </div>
-
             <!-- Payables Panel -->
             <div id="payables" class="panel">
                 <div class="section">
@@ -171,7 +164,6 @@
                     </table>
                 </div>
             </div>
-
             <!-- Reconciliation Panel -->
             <div id="reconcile" class="panel">
                 <div class="section">
@@ -188,9 +180,8 @@
             </div>
         </main>
 
-        <!-- Modals -->
-        
-<div id="new-invoice-modal" class="modal">
+        <!-- Invoice Modal -->
+        <div id="new-invoice-modal" class="modal">
             <div class="modal-content">
                 <div class="modal-header">New Invoice</div>
                 <div class="form-group">
@@ -230,8 +221,8 @@
             </div>
         </div>
 
-       
-<div id="new-bill-modal" class="modal">
+        <!-- Bill Modal -->
+        <div id="new-bill-modal" class="modal">
             <div class="modal-content">
                 <div class="modal-header">Add Bill</div>
                 <div class="form-group">
@@ -247,6 +238,12 @@
                 <div class="form-group">
                     <label>Due Date</label>
                     <input type="date" id="bill-due">
+                </div>
+                <div class="form-group">
+                    <label>Product/Service</label>
+                    <select id="bill-item">
+                        <option value="">Select a product/service...</option>
+                    </select>
                 </div>
                 <div class="form-group">
                     <label>Class (Optional)</label>
@@ -265,6 +262,8 @@
             </div>
         </div>
 
+    </div>
+
     <script>
         // Global state
         let connected = { qbo: false, cashpro: false };
@@ -280,8 +279,6 @@
         // Initialize
         document.addEventListener('DOMContentLoaded', async () => {
             await checkConnections();
-            
-            // Check for OAuth callback parameters
             const params = new URLSearchParams(window.location.search);
             if (params.get('qbo') === 'connected' || params.get('cashpro') === 'connected') {
                 window.history.replaceState({}, document.title, window.location.pathname);
@@ -293,12 +290,9 @@
             try {
                 const response = await fetch('/api/status');
                 const status = await response.json();
-                
                 connected.qbo = status.qbo;
                 connected.cashpro = status.cashpro;
-                
                 updateConnectionUI();
-                
                 if (connected.qbo || connected.cashpro) {
                     await loadDashboardData();
                 }
@@ -313,13 +307,12 @@
             const setupDiv = document.getElementById('connection-setup');
             const navDiv = document.getElementById('main-nav');
             const contentDiv = document.getElementById('dashboard-content');
-            
+
             qboStatus.textContent = connected.qbo ? 'QBO Connected' : 'QBO Disconnected';
             qboStatus.className = `connection-badge ${connected.qbo ? 'connected' : 'disconnected'}`;
-            
             cashproStatus.textContent = connected.cashpro ? 'CashPro Connected' : 'CashPro Disconnected';
             cashproStatus.className = `connection-badge ${connected.cashpro ? 'connected' : 'disconnected'}`;
-            
+
             if (connected.qbo || connected.cashpro) {
                 setupDiv.style.display = 'none';
                 navDiv.style.display = 'flex';
@@ -333,22 +326,19 @@
 
         async function loadDashboardData() {
             try {
-                // Load invoices if QBO connected
                 if (connected.qbo) {
                     const invoicesResponse = await fetch('/api/qbo/invoices');
                     if (invoicesResponse.ok) {
                         const invoicesResult = await invoicesResponse.json();
                         invoicesData = invoicesResult.QueryResponse?.Invoice || [];
                     }
-                    
                     const billsResponse = await fetch('/api/qbo/bills');
                     if (billsResponse.ok) {
                         const billsResult = await billsResponse.json();
                         billsData = billsResult.QueryResponse?.Bill || [];
                     }
                 }
-                
-                // Load transactions if CashPro connected
+
                 if (connected.cashpro) {
                     const accountsResponse = await fetch('/api/cashpro/accounts');
                     if (accountsResponse.ok) {
@@ -356,7 +346,6 @@
                         if (accounts.length > 0) {
                             const today = new Date();
                             const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
-                            
                             const transactionsResponse = await fetch(`/api/cashpro/transactions?accountId=${accounts[0].id}&startDate=${thirtyDaysAgo.toISOString().split('T')[0]}&endDate=${today.toISOString().split('T')[0]}`);
                             if (transactionsResponse.ok) {
                                 transactionsData = await transactionsResponse.json();
@@ -364,120 +353,123 @@
                         }
                     }
                 }
-                 // Load customers and items for invoice creation
-        if (connected.qbo) {
-            try {
-let classes = []; 
-                // Load customers
-                const customersResponse = await fetch('/api/qbo/customers');
-                if (customersResponse.ok) {
-                    const customersResult = await customersResponse.json();
-                    const customers = customersResult.QueryResponse?.Customer || [];
-                    
-                    // Populate the client dropdown
-                    const clientSelect = document.getElementById('invoice-client');
-                    if (clientSelect) {
-                        clientSelect.innerHTML = '<option value="">Select a client...</option>';
-                        
-                        customers.forEach(customer => {
-                            if (customer.Active) {
-                                const option = document.createElement('option');
-                                option.value = customer.DisplayName || customer.Name;
-                                option.textContent = customer.DisplayName || customer.Name;
-                                clientSelect.appendChild(option);
+
+                if (connected.qbo) {
+                    try {
+                        let classes = [];
+                        let items = [];
+
+                        // Load customers
+                        const customersResponse = await fetch('/api/qbo/customers');
+                        if (customersResponse.ok) {
+                            const customersResult = await customersResponse.json();
+                            const customers = customersResult.QueryResponse?.Customer || [];
+                            const clientSelect = document.getElementById('invoice-client');
+                            if (clientSelect) {
+                                clientSelect.innerHTML = '<option value="">Select a client...</option>';
+                                customers.forEach(customer => {
+                                    if (customer.Active) {
+                                        const option = document.createElement('option');
+                                        option.value = customer.DisplayName || customer.Name;
+                                        option.textContent = customer.DisplayName || customer.Name;
+                                        clientSelect.appendChild(option);
+                                    }
+                                });
                             }
-                        });
+                        }
+
+                        // Load items
+                        const itemsResponse = await fetch('/api/qbo/items');
+                        if (itemsResponse.ok) {
+                            const itemsResult = await itemsResponse.json();
+                            items = itemsResult.QueryResponse?.Item || [];
+                            const itemSelect = document.getElementById('invoice-item');
+                            if (itemSelect) {
+                                itemSelect.innerHTML = '<option value="">Select a service...</option>';
+                                items.forEach(item => {
+                                    if (item.Type === 'Service' && item.Active) {
+                                        const option = document.createElement('option');
+                                        option.value = JSON.stringify({id: item.Id, name: item.Name});
+                                        option.textContent = item.Name;
+                                        itemSelect.appendChild(option);
+                                    }
+                                });
+                            }
+                        }
+
+                        // Load classes
+                        const classesResponse = await fetch('/api/qbo/classes');
+                        if (classesResponse.ok) {
+                            const classesResult = await classesResponse.json();
+                            classes = classesResult.QueryResponse?.Class || [];
+                            const classSelect = document.getElementById('invoice-class');
+                            if (classSelect) {
+                                classSelect.innerHTML = '<option value="">No class</option>';
+                                classes.forEach(cls => {
+                                    if (cls.Active) {
+                                        const option = document.createElement('option');
+                                        option.value = cls.Id;
+                                        option.textContent = cls.FullyQualifiedName || cls.Name;
+                                        classSelect.appendChild(option);
+                                    }
+                                });
+                            }
+                        }
+
+                        // Load vendors
+                        const vendorsResponse = await fetch('/api/qbo/vendors');
+                        if (vendorsResponse.ok) {
+                            const vendorsResult = await vendorsResponse.json();
+                            const vendors = vendorsResult.QueryResponse?.Vendor || [];
+                            const vendorSelect = document.getElementById('bill-vendor');
+                            if (vendorSelect) {
+                                vendorSelect.innerHTML = '<option value="">Select a vendor...</option>';
+                                vendors.forEach(vendor => {
+                                    if (vendor.Active) {
+                                        const option = document.createElement('option');
+                                        option.value = vendor.DisplayName || vendor.Name;
+                                        option.textContent = vendor.DisplayName || vendor.Name;
+                                        vendorSelect.appendChild(option);
+                                    }
+                                });
+                            }
+
+                            // Populate bill items dropdown
+                            const billItemSelect = document.getElementById('bill-item');
+                            if (billItemSelect && items.length > 0) {
+                                billItemSelect.innerHTML = '<option value="">Select a product/service...</option>';
+                                items.forEach(item => {
+                                    if (item.Active) {
+                                        const option = document.createElement('option');
+                                        option.value = JSON.stringify({id: item.Id, name: item.Name});
+                                        option.textContent = item.Name;
+                                        billItemSelect.appendChild(option);
+                                    }
+                                });
+                            }
+
+                            // Populate bill class dropdown
+                            const billClassSelect = document.getElementById('bill-class');
+                            if (billClassSelect && classes.length > 0) {
+                                billClassSelect.innerHTML = '<option value="">No class</option>';
+                                classes.forEach(cls => {
+                                    if (cls.Active) {
+                                        const option = document.createElement('option');
+                                        option.value = cls.Id;
+                                        option.textContent = cls.FullyQualifiedName || cls.Name;
+                                        billClassSelect.appendChild(option);
+                                    }
+                                });
+                            }
+                        }
+
+                    } catch (error) {
+                        console.error('Error loading dropdown data:', error);
                     }
                 }
 
-                // Load items
-                const itemsResponse = await fetch('/api/qbo/items');
-                if (itemsResponse.ok) {
-                    const itemsResult = await itemsResponse.json();
-                    const items = itemsResult.QueryResponse?.Item || [];
-                    
-                    // Populate the service dropdown
-                    const itemSelect = document.getElementById('invoice-item');
-                    if (itemSelect) {
-                        itemSelect.innerHTML = '<option value="">Select a service...</option>';
-                        
-                        items.forEach(item => {
-                            if (item.Type === 'Service' && item.Active) {
-                                const option = document.createElement('option');
-                                option.value = JSON.stringify({id: item.Id, name: item.Name});
-                                option.textContent = item.Name;
-                                itemSelect.appendChild(option);
-                            }
-                        });
-                    }
-                }
-            
-                   // Load classes
-                const classesResponse = await fetch('/api/qbo/classes');
-                if (classesResponse.ok) {
-                    const classesResult = await classesResponse.json();
-                    classes = classesResult.QueryResponse?.Class || [];
-                    
-                    const classSelect = document.getElementById('invoice-class');
-                    if (classSelect) {
-                        classSelect.innerHTML = '<option value="">No class</option>';
-                        
-                        classes.forEach(cls => {
-                            if (cls.Active) {
-                                const option = document.createElement('option');
-                                option.value = cls.Id;
-                                // Show full hierarchy: "Main Class:Subclass" or just "Class" if no parent
-                                option.textContent = cls.FullyQualifiedName || cls.Name;
-                                classSelect.appendChild(option);
-                            }
-                        });
-                    }
-                }
+                renderDashboard();
 
-// Load vendors for bills
-                const vendorsResponse = await fetch('/api/qbo/vendors');
-                if (vendorsResponse.ok) {
-                    const vendorsResult = await vendorsResponse.json();
-                    const vendors = vendorsResult.QueryResponse?.Vendor || [];
-                    
-                    const vendorSelect = document.getElementById('bill-vendor');
-                    if (vendorSelect) {
-                        vendorSelect.innerHTML = '<option value="">Select a vendor...</option>';
-                        
-                        vendors.forEach(vendor => {
-                            if (vendor.Active) {
-                                const option = document.createElement('option');
-                                option.value = vendor.DisplayName || vendor.Name;
-                                option.textContent = vendor.DisplayName || vendor.Name;
-                                vendorSelect.appendChild(option);
-                            }
-                        });
-                    }
-                    
-                    // Also populate bill class dropdown (reuse classes data)
-                    const billClassSelect = document.getElementById('bill-class');
-                    if (billClassSelect && classes.length > 0) {
-                        billClassSelect.innerHTML = '<option value="">No class</option>';
-                        
-                        classes.forEach(cls => {
-                            if (cls.Active) {
-                                const option = document.createElement('option');
-                                option.value = cls.Id;
-                                option.textContent = cls.FullyQualifiedName || cls.Name;
-                                billClassSelect.appendChild(option);
-                            }
-                        });
-                    }
-                }
-
-
-} catch (error) {
-                console.error('Error loading dropdown data:', error);
-            }
-        }
-        
-        renderDashboard();
-                
             } catch (error) {
                 console.error('Failed to load dashboard data:', error);
             }
@@ -491,11 +483,10 @@ let classes = [];
         }
 
         function renderOverview() {
-            // Metrics
             const totalReceivable = invoicesData.reduce((sum, inv) => sum + (inv.TotalAmt || 0), 0);
             const totalPayable = billsData.reduce((sum, bill) => sum + (bill.TotalAmt || 0), 0);
             const overdueCount = invoicesData.filter(inv => parseFloat(inv.Balance) > 0 && daysDiff(inv.DueDate) < 0).length;
-            
+
             document.getElementById('overview-metrics').innerHTML = `
                 <div class="metric">
                     <div class="metric-label">Total Receivable</div>
@@ -524,17 +515,16 @@ let classes = [];
             const tbody = document.getElementById('invoices-list');
             tbody.innerHTML = invoicesData.map(invoice => {
                 const dueIn = daysDiff(invoice.DueDate);
-        const balance = parseFloat(invoice.Balance) || 0;
-        let status;
-        if (balance === 0) {
-            status = 'paid';
-        } else if (dueIn < 0) {
-            status = 'overdue';  
-        } else {
-            status = 'pending';
-        }
+                const balance = parseFloat(invoice.Balance) || 0;
+                let status;
+                if (balance === 0) {
+                    status = 'paid';
+                } else if (dueIn < 0) {
+                    status = 'overdue';
+                } else {
+                    status = 'pending';
+                }
                 const statusBadge = status === 'overdue' ? 'badge-overdue' : status === 'paid' ? 'badge-paid' : 'badge-pending';
-                
                 return `
                     <tr>
                         <td>${invoice.CustomerRef?.name || 'Unknown'}</td>
@@ -558,7 +548,6 @@ let classes = [];
             tbody.innerHTML = billsData.map(bill => {
                 const status = bill.Balance > 0 ? 'pending' : 'paid';
                 const statusBadge = status === 'paid' ? 'badge-paid' : 'badge-pending';
-                
                 return `
                     <tr>
                         <td>${bill.VendorRef?.name || 'Unknown'}</td>
@@ -576,20 +565,16 @@ let classes = [];
         }
 
         function renderReconciliation() {
-            // This would show bank vs QBO transaction matching
             document.getElementById('reconcile-content').innerHTML = '<div class="loading">Reconciliation features coming soon...</div>';
         }
 
-        // Navigation
-        function showPanel(panelName) {
+        function showPanel(panelName, event) {
             document.querySelectorAll('.panel').forEach(panel => panel.classList.remove('active'));
             document.querySelectorAll('.nav button').forEach(btn => btn.classList.remove('active'));
-            
             document.getElementById(panelName).classList.add('active');
-            event.target.classList.add('active');
+            if (event && event.target) event.target.classList.add('active');
         }
 
-        // Modal functions
         function openModal(modalId) {
             document.getElementById(modalId).classList.add('open');
         }
@@ -598,7 +583,6 @@ let classes = [];
             document.getElementById(modalId).classList.remove('open');
         }
 
-        // Connection functions
         function connectQBO() {
             window.location.href = '/auth/qbo';
         }
@@ -607,67 +591,93 @@ let classes = [];
             window.location.href = '/auth/cashpro';
         }
 
-        // Create invoice
-       async function createInvoice() {
-    const clientSelect = document.getElementById('invoice-client');
-    const newClientInput = document.getElementById('invoice-client-new');
-    
-    let client;
-    if (clientSelect.value === '__NEW__') {
-        client = newClientInput.value.trim();
-    } else {
-        client = clientSelect.value;
-    }
-    
-    const amount = parseFloat(document.getElementById('invoice-amount').value);
-    const dueDate = document.getElementById('invoice-due').value;
-    const description = document.getElementById('invoice-description').value;
-    const selectedItem = document.getElementById('invoice-item').value;
-    
-    if (!client || !amount || !dueDate || !selectedItem) {
-        alert('Please fill in all required fields');
-        return;
-    }
-    
-    const itemData = JSON.parse(selectedItem);
-    
-    try {
-        const response = await fetch('/api/qbo/invoices', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                client, 
-                amount, 
-                dueDate, 
-                description,
-                itemId: itemData.id,
-                itemName: itemData.name
-            })
-        });
-        
-        if (response.ok) {
-            closeModal('new-invoice-modal');
-            await loadDashboardData();
-        } else {
-            alert('Failed to create invoice');
-        }
-    } catch (error) {
-        console.error('Create invoice error:', error);
-        alert('Error creating invoice');
-    }
-}
+        async function createInvoice() {
+            const clientSelect = document.getElementById('invoice-client');
+            let client = clientSelect.value;
 
-        // Placeholder functions
+            const amount = parseFloat(document.getElementById('invoice-amount').value);
+            const dueDate = document.getElementById('invoice-due').value;
+            const description = document.getElementById('invoice-description').value;
+            const selectedItem = document.getElementById('invoice-item').value;
+
+            if (!client || !amount || !dueDate || !selectedItem) {
+                alert('Please fill in all required fields');
+                return;
+            }
+
+            const itemData = JSON.parse(selectedItem);
+
+            try {
+                const response = await fetch('/api/qbo/invoices', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        client,
+                        amount,
+                        dueDate,
+                        description,
+                        itemId: itemData.id,
+                        itemName: itemData.name
+                    })
+                });
+
+                if (response.ok) {
+                    closeModal('new-invoice-modal');
+                    await loadDashboardData();
+                } else {
+                    alert('Failed to create invoice');
+                }
+            } catch (error) {
+                console.error('Create invoice error:', error);
+                alert('Error creating invoice');
+            }
+        }
+
+        async function addBill() {
+            const vendor = document.getElementById('bill-vendor').value;
+            const amount = parseFloat(document.getElementById('bill-amount').value);
+            const dueDate = document.getElementById('bill-due').value;
+            const description = document.getElementById('bill-description').value;
+            const selectedBillItem = document.getElementById('bill-item').value;
+            const billItemData = selectedBillItem ? JSON.parse(selectedBillItem) : null;
+
+            if (!vendor || !amount || !dueDate) {
+                alert('Please fill in all required fields');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/qbo/bills', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        vendor,
+                        amount,
+                        dueDate,
+                        description,
+                        itemId: billItemData?.id,
+                        itemName: billItemData?.name
+                    })
+                });
+
+                if (response.ok) {
+                    closeModal('new-bill-modal');
+                    await loadDashboardData();
+                } else {
+                    alert('Failed to add bill');
+                }
+            } catch (error) {
+                console.error('Add bill error:', error);
+                alert('Error adding bill');
+            }
+        }
+
         function markPaid(invoiceId) {
             alert('Mark paid functionality will be implemented');
         }
 
         function approveBill(billId) {
             alert('Bill approval functionality will be implemented');
-        }
-
-        function addBill() {
-            alert('Add bill functionality will be implemented');
         }
 
         function autoMatch() {
