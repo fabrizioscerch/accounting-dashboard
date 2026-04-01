@@ -229,12 +229,15 @@
             </div>
         </div>
 
-        <div id="new-bill-modal" class="modal">
+       
+<div id="new-bill-modal" class="modal">
             <div class="modal-content">
                 <div class="modal-header">Add Bill</div>
                 <div class="form-group">
                     <label>Vendor Name</label>
-                    <input type="text" id="bill-vendor" placeholder="Enter vendor name">
+                    <select id="bill-vendor" required>
+                        <option value="">Select a vendor...</option>
+                    </select>
                 </div>
                 <div class="form-group">
                     <label>Amount (USD)</label>
@@ -244,13 +247,22 @@
                     <label>Due Date</label>
                     <input type="date" id="bill-due">
                 </div>
+                <div class="form-group">
+                    <label>Class (Optional)</label>
+                    <select id="bill-class">
+                        <option value="">No class</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="bill-description" placeholder="Bill description..."></textarea>
+                </div>
                 <div class="modal-actions">
                     <button class="btn btn-secondary" onclick="closeModal('new-bill-modal')">Cancel</button>
                     <button class="btn btn-primary" onclick="addBill()">Add Bill</button>
                 </div>
             </div>
         </div>
-    </div>
 
     <script>
         // Global state
@@ -415,6 +427,42 @@
                                 // Show full hierarchy: "Main Class:Subclass" or just "Class" if no parent
                                 option.textContent = cls.FullyQualifiedName || cls.Name;
                                 classSelect.appendChild(option);
+                            }
+                        });
+                    }
+                }
+
+// Load vendors for bills
+                const vendorsResponse = await fetch('/api/qbo/vendors');
+                if (vendorsResponse.ok) {
+                    const vendorsResult = await vendorsResponse.json();
+                    const vendors = vendorsResult.QueryResponse?.Vendor || [];
+                    
+                    const vendorSelect = document.getElementById('bill-vendor');
+                    if (vendorSelect) {
+                        vendorSelect.innerHTML = '<option value="">Select a vendor...</option>';
+                        
+                        vendors.forEach(vendor => {
+                            if (vendor.Active) {
+                                const option = document.createElement('option');
+                                option.value = vendor.DisplayName || vendor.Name;
+                                option.textContent = vendor.DisplayName || vendor.Name;
+                                vendorSelect.appendChild(option);
+                            }
+                        });
+                    }
+                    
+                    // Also populate bill class dropdown (reuse classes data)
+                    const billClassSelect = document.getElementById('bill-class');
+                    if (billClassSelect && classes.length > 0) {
+                        billClassSelect.innerHTML = '<option value="">No class</option>';
+                        
+                        classes.forEach(cls => {
+                            if (cls.Active) {
+                                const option = document.createElement('option');
+                                option.value = cls.Id;
+                                option.textContent = cls.FullyQualifiedName || cls.Name;
+                                billClassSelect.appendChild(option);
                             }
                         });
                     }
