@@ -295,6 +295,10 @@ app.get('/api/qbo/customers', async (req, res) => {
   }
 });
 
+app.get('/api/qbo/classes', async (req, res) => {
+  // ... classes endpoint code
+});
+
 app.get('/api/qbo/bills', async (req, res) => {
   if (!qboTokens?.access_token) {
     return res.status(401).json({ error: 'QBO not connected' });
