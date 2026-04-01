@@ -366,6 +366,7 @@
                  // Load customers and items for invoice creation
         if (connected.qbo) {
             try {
+let classes = []; 
                 // Load customers
                 const customersResponse = await fetch('/api/qbo/customers');
                 if (customersResponse.ok) {
@@ -414,7 +415,7 @@
                 const classesResponse = await fetch('/api/qbo/classes');
                 if (classesResponse.ok) {
                     const classesResult = await classesResponse.json();
-                    const classes = classesResult.QueryResponse?.Class || [];
+                    classes = classesResult.QueryResponse?.Class || [];
                     
                     const classSelect = document.getElementById('invoice-class');
                     if (classSelect) {
