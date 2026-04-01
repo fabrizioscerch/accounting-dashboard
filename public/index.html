@@ -412,7 +412,8 @@
                             if (cls.Active) {
                                 const option = document.createElement('option');
                                 option.value = cls.Id;
-                                option.textContent = cls.Name;
+                                // Show full hierarchy: "Main Class:Subclass" or just "Class" if no parent
+                                option.textContent = cls.FullyQualifiedName || cls.Name;
                                 classSelect.appendChild(option);
                             }
                         });
