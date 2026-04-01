@@ -524,7 +524,16 @@ let classes = [];
             const tbody = document.getElementById('invoices-list');
             tbody.innerHTML = invoicesData.map(invoice => {
                 const dueIn = daysDiff(invoice.DueDate);
-                const status = dueIn < 0 ? 'overdue' : invoice.Balance > 0 ? 'pending' : 'paid';
+                const dueIn = daysDiff(invoice.DueDate);
+        const balance = parseFloat(invoice.Balance) || 0;
+        let status;
+        if (balance === 0) {
+            status = 'paid';
+        } else if (dueIn < 0) {
+            status = 'overdue';  
+        } else {
+            status = 'pending';
+        }
                 const statusBadge = status === 'overdue' ? 'badge-overdue' : status === 'paid' ? 'badge-paid' : 'badge-pending';
                 
                 return `
