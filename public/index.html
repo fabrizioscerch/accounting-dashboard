@@ -227,10 +227,6 @@
                 <option value="">No class</option>
             </select>
         </div>
-        <div class="form-group">
-            <label>Description</label>
-            <textarea id="invoice-description" placeholder="Service description..."></textarea>
-        </div>
 
 
  <div class="form-group">
@@ -398,7 +394,28 @@
                     const itemsResult = await itemsResponse.json();
                     const items = itemsResult.QueryResponse?.Item || [];
                     
-                    // Populate the service dropdown
+               // Load classes
+                const classesResponse = await fetch('/api/qbo/classes');
+                if (classesResponse.ok) {
+                    const classesResult = await classesResponse.json();
+                    const classes = classesResult.QueryResponse?.Class || [];
+                    
+                    const classSelect = document.getElementById('invoice-class');
+                    if (classSelect) {
+                        classSelect.innerHTML = '<option value="">No class</option>';
+                        
+                        classes.forEach(cls => {
+                            if (cls.Active) {
+                                const option = document.createElement('option');
+                                option.value = cls.Id;
+                                option.textContent = cls.Name;
+                                classSelect.appendChild(option);
+                            }
+                        });
+                    }
+                }                 
+
+               // Populate the service dropdown
                     const itemSelect = document.getElementById('invoice-item');
                     if (itemSelect) {
                         itemSelect.innerHTML = '<option value="">Select a service...</option>';
