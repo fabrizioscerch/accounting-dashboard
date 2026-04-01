@@ -255,6 +255,36 @@ app.get('/api/qbo/invoices', async (req, res) => {
   }
 });
 
+app.get('/api/qbo/bills', async (req, res) => {
+  if (!qboTokens?.access_token) {
+    return res.status(401).json({ error: 'QBO not connected' });
+  }
+  
+  try {
+    const response = await fetch(`https://quickbooks.api.intuit.com/v3/company/${qboTokens.realmId}/query?query=SELECT * FROM Bill MAXRESULTS 1000`, {
+      headers: {
+        'Authorization': `Bearer ${qboTokens.access_token}`,
+        'Accept': 'application/json'
+      }
+    });
+    
+    if (response.status === 401) {
+      const refreshed = await refreshQboToken();
+      if (refreshed) {
+        return res.redirect('/api/qbo/bills');
+      }
+      return res.status(401).json({ error: 'Token expired' });
+    }
+    
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error('QBO API error:', error);
+    res.status(500).json({ error: 'Failed to fetch bills' });
+  }
+});
+
+
 app.get('/api/qbo/items', async (req, res) => {
   if (!qboTokens?.access_token) {
     return res.status(401).json({ error: 'QBO not connected' });
