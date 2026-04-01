@@ -664,11 +664,12 @@
                     closeModal('new-bill-modal');
                     await loadDashboardData();
                 } else {
-                    alert('Failed to add bill');
+                    const errData = await response.json().catch(() => ({}));
+                    alert('Failed to add bill: ' + (errData.error || response.status));
                 }
             } catch (error) {
                 console.error('Add bill error:', error);
-                alert('Error adding bill');
+                alert('Error adding bill: ' + error.message);
             }
         }
 
