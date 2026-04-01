@@ -565,8 +565,107 @@
         }
 
         function renderReconciliation() {
-            document.getElementById('reconcile-content').innerHTML = '<div class="loading">Reconciliation features coming soon...</div>';
-        }
+    const totalInvoiced = invoicesData.reduce((s, i) => s + (parseFloat(i.TotalAmt) || 0), 0);
+    const totalCollected = invoicesData.reduce((s, i) => s + ((parseFloat(i.TotalAmt) || 0) - (parseFloat(i.Balance) || 0)), 0);
+    const arOutstanding = invoicesData.reduce((s, i) => s + (parseFloat(i.Balance) || 0), 0);
+
+    const totalBilled = billsData.reduce((s, b) => s + (parseFloat(b.TotalAmt) || 0), 0);
+    const totalPaid = billsData.reduce((s, b) => s + ((parseFloat(b.TotalAmt) || 0) - (parseFloat(b.Balance) || 0)), 0);
+    const apOutstanding = billsData.reduce((s, b) => s + (parseFloat(b.Balance) || 0), 0);
+
+    const netPosition = totalCollected - totalPaid;
+
+    const collectedInvoices = invoicesData.filter(i => parseFloat(i.Balance) === 0);
+    const paidBills = billsData.filter(b => parseFloat(b.Balance) === 0);
+    const outstandingInvoices = invoicesData.filter(i => parseFloat(i.Balance) > 0);
+    const outstandingBills = billsData.filter(b => parseFloat(b.Balance) > 0);
+
+    document.getElementById('reconcile-content').innerHTML = `
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin:16px 0;">
+            <div class="metric" style="text-align:center;">
+                <div class="metric-label">AR Collected</div>
+                <div class="metric-value" style="color:#059669;">${fmt(totalCollected)}</div>
+                <div class="metric-sub">of ${fmt(totalInvoiced)} invoiced</div>
+            </div>
+            <div class="metric" style="text-align:center;">
+                <div class="metric-label">AP Paid</div>
+                <div class="metric-value" style="color:#dc2626;">${fmt(totalPaid)}</div>
+                <div class="metric-sub">of ${fmt(totalBilled)} billed</div>
+            </div>
+            <div class="metric" style="text-align:center;">
+                <div class="metric-label">Net Position</div>
+                <div class="metric-value" style="color:${netPosition >= 0 ? '#059669' : '#dc2626'};">${fmt(netPosition)}</div>
+                <div class="metric-sub">${netPosition >= 0 ? 'Favorable' : 'Unfavorable'}</div>
+            </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:8px;">
+            <div>
+                <div style="font-weight:600;padding:10px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px 6px 0 0;">
+                    Outstanding Invoices (${outstandingInvoices.length})
+                </div>
+                ${outstandingInvoices.length === 0
+                    ? '<div style="padding:12px;border:1px solid #e5e7eb;border-top:none;color:#6b7280;">All invoices collected</div>'
+                    : outstandingInvoices.map(i => `
+                        <div class="reconcile-item" style="border:1px solid #e5e7eb;border-top:none;display:flex;justify-content:space-between;align-items:center;">
+                            <div>
+                                <div style="font-weight:500;font-size:13px;">${i.CustomerRef?.name || 'Unknown'}</div>
+                                <div style="color:#6b7280;font-size:12px;">Due ${i.DueDate || 'N/A'}</div>
+                            </div>
+                            <div class="amount-negative">${fmt(parseFloat(i.Balance))}</div>
+                        </div>`).join('')}
+            </div>
+            <div>
+                <div style="font-weight:600;padding:10px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px 6px 0 0;">
+                    Outstanding Bills (${outstandingBills.length})
+                </div>
+                ${outstandingBills.length === 0
+                    ? '<div style="padding:12px;border:1px solid #e5e7eb;border-top:none;color:#6b7280;">All bills paid</div>'
+                    : outstandingBills.map(b => `
+                        <div class="reconcile-item" style="border:1px solid #e5e7eb;border-top:none;display:flex;justify-content:space-between;align-items:center;">
+                            <div>
+                                <div style="font-weight:500;font-size:13px;">${b.VendorRef?.name || 'Unknown'}</div>
+                                <div style="color:#6b7280;font-size:12px;">Due ${b.DueDate || 'N/A'}</div>
+                            </div>
+                            <div class="amount-negative">${fmt(parseFloat(b.Balance))}</div>
+                        </div>`).join('')}
+            </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;">
+            <div>
+                <div style="font-weight:600;padding:10px 12px;background:#d1fae5;border:1px solid #6ee7b7;border-radius:6px 6px 0 0;">
+                    Collected Invoices (${collectedInvoices.length})
+                </div>
+                ${collectedInvoices.length === 0
+                    ? '<div style="padding:12px;border:1px solid #e5e7eb;border-top:none;color:#6b7280;">None yet</div>'
+                    : collectedInvoices.map(i => `
+                        <div class="reconcile-item matched" style="border:1px solid #6ee7b7;border-top:none;display:flex;justify-content:space-between;align-items:center;">
+                            <div>
+                                <div style="font-weight:500;font-size:13px;">${i.CustomerRef?.name || 'Unknown'}</div>
+                                <div style="color:#6b7280;font-size:12px;">${i.TxnDate || ''}</div>
+                            </div>
+                            <div class="amount-positive">${fmt(parseFloat(i.TotalAmt))}</div>
+                        </div>`).join('')}
+            </div>
+            <div>
+                <div style="font-weight:600;padding:10px 12px;background:#d1fae5;border:1px solid #6ee7b7;border-radius:6px 6px 0 0;">
+                    Paid Bills (${paidBills.length})
+                </div>
+                ${paidBills.length === 0
+                    ? '<div style="padding:12px;border:1px solid #e5e7eb;border-top:none;color:#6b7280;">None yet</div>'
+                    : paidBills.map(b => `
+                        <div class="reconcile-item matched" style="border:1px solid #6ee7b7;border-top:none;display:flex;justify-content:space-between;align-items:center;">
+                            <div>
+                                <div style="font-weight:500;font-size:13px;">${b.VendorRef?.name || 'Unknown'}</div>
+                                <div style="color:#6b7280;font-size:12px;">${b.TxnDate || ''}</div>
+                            </div>
+                            <div class="amount-positive">${fmt(parseFloat(b.TotalAmt))}</div>
+                        </div>`).join('')}
+            </div>
+        </div>
+    `;
+}
 
         function showPanel(panelName, event) {
             document.querySelectorAll('.panel').forEach(panel => panel.classList.remove('active'));
