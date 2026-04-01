@@ -384,17 +384,33 @@ app.post('/api/qbo/bills', async (req, res) => {
     }
 
     let lineItem;
+    let expenseAccountId = null;
 
     if (itemId) {
+      // Fetch the item to get its expense account
+      const itemResponse = await fetch(`https://quickbooks.api.intuit.com/v3/company/${qboTokens.realmId}/item/${itemId}`, {
+        headers: {
+          'Authorization': `Bearer ${qboTokens.access_token}`,
+          'Accept': 'application/json'
+        }
+      });
+      const itemResult = await itemResponse.json();
+      console.log('Item lookup result:', JSON.stringify(itemResult));
+      expenseAccountId = itemResult.Item?.ExpenseAccountRef?.value;
+    }
+
+    if (expenseAccountId) {
+      // Use the item's own expense account
       lineItem = {
         Amount: amount,
-        DetailType: 'ItemBasedExpenseLineDetail',
-        ItemBasedExpenseLineDetail: {
-          ItemRef: { value: itemId, name: itemName }
+        DetailType: 'AccountBasedExpenseLineDetail',
+        Description: itemName || description,
+        AccountBasedExpenseLineDetail: {
+          AccountRef: { value: expenseAccountId }
         }
       };
     } else {
-      // Look up a real expense account from QBO
+      // No item selected or item has no expense account — look up a general expense account
       const accountQuery = `SELECT * FROM Account WHERE AccountType='Expense' MAXRESULTS 1`;
       const accountResponse = await fetch(`https://quickbooks.api.intuit.com/v3/company/${qboTokens.realmId}/query?query=${encodeURIComponent(accountQuery)}`, {
         headers: {
@@ -413,6 +429,7 @@ app.post('/api/qbo/bills', async (req, res) => {
       lineItem = {
         Amount: amount,
         DetailType: 'AccountBasedExpenseLineDetail',
+        Description: itemName || description,
         AccountBasedExpenseLineDetail: {
           AccountRef: { value: accountId }
         }
