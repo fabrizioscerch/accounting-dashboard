@@ -363,10 +363,12 @@ app.post('/api/qbo/bills', async (req, res) => {
   }
 
   const { vendor, amount, dueDate, description, itemId, itemName } = req.body;
+  console.log('Bill creation request:', { vendor, amount, dueDate, itemId, itemName });
 
   try {
     // Find vendor in QBO
-    const vendorResponse = await fetch(`https://quickbooks.api.intuit.com/v3/company/${qboTokens.realmId}/query?query=SELECT * FROM Vendor WHERE DisplayName='${vendor}'`, {
+    const vendorQuery = `SELECT * FROM Vendor WHERE DisplayName='${vendor}'`;
+    const vendorResponse = await fetch(`https://quickbooks.api.intuit.com/v3/company/${qboTokens.realmId}/query?query=${encodeURIComponent(vendorQuery)}`, {
       headers: {
         'Authorization': `Bearer ${qboTokens.access_token}`,
         'Accept': 'application/json'
@@ -374,10 +376,11 @@ app.post('/api/qbo/bills', async (req, res) => {
     });
 
     const vendorData = await vendorResponse.json();
+    console.log('Vendor lookup result:', JSON.stringify(vendorData));
     const vendorId = vendorData.QueryResponse?.Vendor?.[0]?.Id;
 
     if (!vendorId) {
-      return res.status(400).json({ error: 'Vendor not found in QBO' });
+      return res.status(400).json({ error: `Vendor "${vendor}" not found in QBO` });
     }
 
     let lineItem;
@@ -391,14 +394,37 @@ app.post('/api/qbo/bills', async (req, res) => {
         }
       };
     } else {
+      // Look up a real expense account from QBO
+      const accountQuery = `SELECT * FROM Account WHERE AccountType='Expense' MAXRESULTS 1`;
+      const accountResponse = await fetch(`https://quickbooks.api.intuit.com/v3/company/${qboTokens.realmId}/query?query=${encodeURIComponent(accountQuery)}`, {
+        headers: {
+          'Authorization': `Bearer ${qboTokens.access_token}`,
+          'Accept': 'application/json'
+        }
+      });
+      const accountData = await accountResponse.json();
+      console.log('Account lookup result:', JSON.stringify(accountData));
+      const accountId = accountData.QueryResponse?.Account?.[0]?.Id;
+
+      if (!accountId) {
+        return res.status(400).json({ error: 'No expense account found in QBO. Please select a Product/Service.' });
+      }
+
       lineItem = {
         Amount: amount,
         DetailType: 'AccountBasedExpenseLineDetail',
         AccountBasedExpenseLineDetail: {
-          AccountRef: { value: '1' }
+          AccountRef: { value: accountId }
         }
       };
     }
+
+    const billPayload = {
+      VendorRef: { value: vendorId },
+      DueDate: dueDate,
+      Line: [lineItem]
+    };
+    console.log('Bill payload:', JSON.stringify(billPayload));
 
     const billResponse = await fetch(`https://quickbooks.api.intuit.com/v3/company/${qboTokens.realmId}/bill`, {
       method: 'POST',
@@ -407,11 +433,7 @@ app.post('/api/qbo/bills', async (req, res) => {
         'Accept': 'application/json',
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        VendorRef: { value: vendorId },
-        DueDate: dueDate,
-        Line: [lineItem]
-      })
+      body: JSON.stringify(billPayload)
     });
 
     console.log('Bill response status:', billResponse.status);
@@ -419,13 +441,15 @@ app.post('/api/qbo/bills', async (req, res) => {
     console.log('Bill creation response:', JSON.stringify(billData, null, 2));
 
     if (billData.Fault) {
-      return res.status(400).json({ error: billData.Fault.Error[0].Message });
+      const qboError = billData.Fault.Error?.[0]?.Message || 'Unknown QBO error';
+      console.error('QBO Fault:', JSON.stringify(billData.Fault));
+      return res.status(400).json({ error: qboError });
     }
 
     res.json(billData);
   } catch (error) {
     console.error('Create bill error:', error);
-    res.status(500).json({ error: 'Failed to create bill' });
+    res.status(500).json({ error: error.message || 'Failed to create bill' });
   }
 });
 
