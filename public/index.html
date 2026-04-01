@@ -72,6 +72,11 @@
         .reconcile-grid { display: grid; grid-template-columns: 1fr 1fr; }
         .reconcile-item { padding: 12px; border-bottom: 1px solid #f3f4f6; }
         .reconcile-item.matched { background: #d1fae5; }
+.rec-card { cursor:pointer; padding:10px 12px; border:1px solid #e5e7eb; border-top:none; display:flex; justify-content:space-between; align-items:center; transition:background 0.15s; }
+.rec-card:hover { background:#f0f9ff; }
+.rec-card.bank-selected { background:#dbeafe; border-color:#3b82f6; }
+.rec-card.qbo-selected { background:#fef9c3; border-color:#eab308; }
+.rec-card.matched-item { background:#d1fae5; border-color:#6ee7b7; cursor:default; }
         .amount-positive { color: #059669; font-weight: 600; }
         .amount-negative { color: #dc2626; font-weight: 600; }
     </style>
@@ -169,7 +174,7 @@
                 <div class="section">
                     <div class="section-header">
                         <span class="section-title">Bank Reconciliation</span>
-                        <button class="btn btn-primary" onclick="autoMatch()">Auto-Match</button>
+                        <button class="btn btn-primary" id="match-btn" onclick="matchSelected()" style="opacity:0.4;cursor:not-allowed;" disabled>Match Selected</button>
                     </div>
                     <div class="reconcile-grid">
                         <div style="padding: 12px; font-weight: 600; background: #f9fafb; border-bottom: 1px solid #e5e7eb;">Bank Transactions</div>
@@ -270,7 +275,10 @@
         let invoicesData = [];
         let billsData = [];
         let transactionsData = [];
-
+let bankTransactionsData = [];
+let reconcileMatches = [];
+let selectedBankId = null;
+let selectedQBOId = null;
         // Utility functions
         const fmt = (amount) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
         const formatDate = (date) => new Date(date).toLocaleDateString();
@@ -564,108 +572,168 @@
             }).join('');
         }
 
-        function renderReconciliation() {
-    const totalInvoiced = invoicesData.reduce((s, i) => s + (parseFloat(i.TotalAmt) || 0), 0);
-    const totalCollected = invoicesData.reduce((s, i) => s + ((parseFloat(i.TotalAmt) || 0) - (parseFloat(i.Balance) || 0)), 0);
-    const arOutstanding = invoicesData.reduce((s, i) => s + (parseFloat(i.Balance) || 0), 0);
+async function renderReconciliation() {
+    document.getElementById('reconcile-content').innerHTML = '<div class="loading">Loading bank transactions...</div>';
 
-    const totalBilled = billsData.reduce((s, b) => s + (parseFloat(b.TotalAmt) || 0), 0);
-    const totalPaid = billsData.reduce((s, b) => s + ((parseFloat(b.TotalAmt) || 0) - (parseFloat(b.Balance) || 0)), 0);
-    const apOutstanding = billsData.reduce((s, b) => s + (parseFloat(b.Balance) || 0), 0);
+    if (bankTransactionsData.length === 0) {
+        try {
+            const res = await fetch('/api/qbo/bank-transactions');
+            if (res.ok) {
+                const data = await res.json();
+                bankTransactionsData = [
+                    ...(data.deposits || []).map(d => ({
+                        uid: 'dep-' + d.Id,
+                        type: 'deposit',
+                        date: d.TxnDate,
+                        amount: parseFloat(d.TotalAmt) || 0,
+                        label: d.PrivateNote || 'Bank Deposit'
+                    })),
+                    ...(data.purchases || []).map(p => ({
+                        uid: 'pur-' + p.Id,
+                        type: 'purchase',
+                        date: p.TxnDate,
+                        amount: parseFloat(p.TotalAmt) || 0,
+                        label: p.EntityRef?.name || p.PrivateNote || 'Bank Payment'
+                    }))
+                ].sort((a, b) => new Date(b.date) - new Date(a.date));
+            }
+        } catch(e) { console.error('Bank transactions error:', e); }
+    }
 
-    const netPosition = totalCollected - totalPaid;
+    drawReconciliation();
+}
 
-    const collectedInvoices = invoicesData.filter(i => parseFloat(i.Balance) === 0);
-    const paidBills = billsData.filter(b => parseFloat(b.Balance) === 0);
-    const outstandingInvoices = invoicesData.filter(i => parseFloat(i.Balance) > 0);
-    const outstandingBills = billsData.filter(b => parseFloat(b.Balance) > 0);
+function drawReconciliation() {
+    const qboRecords = [
+        ...invoicesData.map(i => ({
+            uid: 'inv-' + i.Id,
+            type: 'invoice',
+            date: i.TxnDate,
+            amount: parseFloat(i.TotalAmt) || 0,
+            label: i.CustomerRef?.name || 'Unknown Customer',
+            status: parseFloat(i.Balance) === 0 ? 'paid' : 'pending'
+        })),
+        ...billsData.map(b => ({
+            uid: 'bill-' + b.Id,
+            type: 'bill',
+            date: b.TxnDate,
+            amount: parseFloat(b.TotalAmt) || 0,
+            label: b.VendorRef?.name || 'Unknown Vendor',
+            status: parseFloat(b.Balance) === 0 ? 'paid' : 'pending'
+        }))
+    ].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    const matchedBankIds = new Set(reconcileMatches.map(m => m.bank.uid));
+    const matchedQBOIds  = new Set(reconcileMatches.map(m => m.qbo.uid));
+
+    const unmatchedBank = bankTransactionsData.filter(t => !matchedBankIds.has(t.uid));
+    const unmatchedQBO  = qboRecords.filter(r => !matchedQBOIds.has(r.uid));
+
+    const bankEmpty = '<div style="padding:12px;color:#6b7280;font-size:13px;">No bank transactions found.<br>Connect your bank account in QBO to import transactions.</div>';
+    const qboEmpty  = '<div style="padding:12px;color:#6b7280;font-size:13px;">No QBO records remaining.</div>';
+
+    const bankHTML = unmatchedBank.length === 0 ? bankEmpty : unmatchedBank.map(t => `
+        <div class="rec-card ${selectedBankId === t.uid ? 'bank-selected' : ''}" onclick="selectBankItem('${t.uid}')">
+            <div>
+                <div style="font-weight:500;font-size:13px;">${t.label}</div>
+                <div style="color:#6b7280;font-size:12px;">${t.date || ''} &nbsp;·&nbsp; ${t.type === 'deposit' ? 'Deposit' : 'Payment'}</div>
+            </div>
+            <div class="${t.type === 'deposit' ? 'amount-positive' : 'amount-negative'}">${t.type === 'deposit' ? '+' : '-'}${fmt(t.amount)}</div>
+        </div>`).join('');
+
+    const qboHTML = unmatchedQBO.length === 0 ? qboEmpty : unmatchedQBO.map(r => `
+        <div class="rec-card ${selectedQBOId === r.uid ? 'qbo-selected' : ''}" onclick="selectQBOItem('${r.uid}')">
+            <div>
+                <div style="font-weight:500;font-size:13px;">${r.label}</div>
+                <div style="color:#6b7280;font-size:12px;">${r.date || ''} &nbsp;·&nbsp; ${r.type === 'invoice' ? 'Invoice' : 'Bill'} &nbsp;·&nbsp;
+                    <span class="badge ${r.status === 'paid' ? 'badge-paid' : 'badge-pending'}">${r.status}</span>
+                </div>
+            </div>
+            <div class="${r.type === 'invoice' ? 'amount-positive' : 'amount-negative'}">${r.type === 'invoice' ? '+' : '-'}${fmt(r.amount)}</div>
+        </div>`).join('');
+
+    const matchedHTML = reconcileMatches.length === 0 ? '' : `
+        <div style="margin-top:24px;">
+            <div style="font-weight:600;font-size:14px;margin-bottom:8px;color:#059669;">Matched Pairs (${reconcileMatches.length})</div>
+            ${reconcileMatches.map((m, i) => `
+                <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:#d1fae5;border:1px solid #6ee7b7;border-radius:6px;margin-bottom:6px;">
+                    <div style="flex:1;font-size:13px;">
+                        <span style="font-weight:500;">${m.bank.label}</span>
+                        <span style="color:#6b7280;"> ${m.bank.date} · ${fmt(m.bank.amount)}</span>
+                    </div>
+                    <div style="color:#059669;font-weight:600;">↔</div>
+                    <div style="flex:1;font-size:13px;">
+                        <span style="font-weight:500;">${m.qbo.label}</span>
+                        <span style="color:#6b7280;"> ${m.qbo.date} · ${fmt(m.qbo.amount)}</span>
+                    </div>
+                    <button class="btn btn-secondary" style="font-size:11px;padding:4px 8px;" onclick="unmatchPair(${i})">Unmatch</button>
+                </div>`).join('')}
+        </div>`;
 
     document.getElementById('reconcile-content').innerHTML = `
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin:16px 0;">
-            <div class="metric" style="text-align:center;">
-                <div class="metric-label">AR Collected</div>
-                <div class="metric-value" style="color:#059669;">${fmt(totalCollected)}</div>
-                <div class="metric-sub">of ${fmt(totalInvoiced)} invoiced</div>
-            </div>
-            <div class="metric" style="text-align:center;">
-                <div class="metric-label">AP Paid</div>
-                <div class="metric-value" style="color:#dc2626;">${fmt(totalPaid)}</div>
-                <div class="metric-sub">of ${fmt(totalBilled)} billed</div>
-            </div>
-            <div class="metric" style="text-align:center;">
-                <div class="metric-label">Net Position</div>
-                <div class="metric-value" style="color:${netPosition >= 0 ? '#059669' : '#dc2626'};">${fmt(netPosition)}</div>
-                <div class="metric-sub">${netPosition >= 0 ? 'Favorable' : 'Unfavorable'}</div>
-            </div>
-        </div>
-
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:8px;">
             <div>
-                <div style="font-weight:600;padding:10px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px 6px 0 0;">
-                    Outstanding Invoices (${outstandingInvoices.length})
+                <div style="font-weight:600;padding:10px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px 6px 0 0;font-size:13px;">
+                    Bank Transactions (${unmatchedBank.length}) &nbsp;
+                    <span style="font-weight:400;color:#6b7280;font-size:12px;">Click to select</span>
                 </div>
-                ${outstandingInvoices.length === 0
-                    ? '<div style="padding:12px;border:1px solid #e5e7eb;border-top:none;color:#6b7280;">All invoices collected</div>'
-                    : outstandingInvoices.map(i => `
-                        <div class="reconcile-item" style="border:1px solid #e5e7eb;border-top:none;display:flex;justify-content:space-between;align-items:center;">
-                            <div>
-                                <div style="font-weight:500;font-size:13px;">${i.CustomerRef?.name || 'Unknown'}</div>
-                                <div style="color:#6b7280;font-size:12px;">Due ${i.DueDate || 'N/A'}</div>
-                            </div>
-                            <div class="amount-negative">${fmt(parseFloat(i.Balance))}</div>
-                        </div>`).join('')}
+                ${bankHTML}
             </div>
             <div>
-                <div style="font-weight:600;padding:10px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px 6px 0 0;">
-                    Outstanding Bills (${outstandingBills.length})
+                <div style="font-weight:600;padding:10px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px 6px 0 0;font-size:13px;">
+                    QBO Records (${unmatchedQBO.length}) &nbsp;
+                    <span style="font-weight:400;color:#6b7280;font-size:12px;">Click to select</span>
                 </div>
-                ${outstandingBills.length === 0
-                    ? '<div style="padding:12px;border:1px solid #e5e7eb;border-top:none;color:#6b7280;">All bills paid</div>'
-                    : outstandingBills.map(b => `
-                        <div class="reconcile-item" style="border:1px solid #e5e7eb;border-top:none;display:flex;justify-content:space-between;align-items:center;">
-                            <div>
-                                <div style="font-weight:500;font-size:13px;">${b.VendorRef?.name || 'Unknown'}</div>
-                                <div style="color:#6b7280;font-size:12px;">Due ${b.DueDate || 'N/A'}</div>
-                            </div>
-                            <div class="amount-negative">${fmt(parseFloat(b.Balance))}</div>
-                        </div>`).join('')}
+                ${qboHTML}
             </div>
         </div>
-
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;">
-            <div>
-                <div style="font-weight:600;padding:10px 12px;background:#d1fae5;border:1px solid #6ee7b7;border-radius:6px 6px 0 0;">
-                    Collected Invoices (${collectedInvoices.length})
-                </div>
-                ${collectedInvoices.length === 0
-                    ? '<div style="padding:12px;border:1px solid #e5e7eb;border-top:none;color:#6b7280;">None yet</div>'
-                    : collectedInvoices.map(i => `
-                        <div class="reconcile-item matched" style="border:1px solid #6ee7b7;border-top:none;display:flex;justify-content:space-between;align-items:center;">
-                            <div>
-                                <div style="font-weight:500;font-size:13px;">${i.CustomerRef?.name || 'Unknown'}</div>
-                                <div style="color:#6b7280;font-size:12px;">${i.TxnDate || ''}</div>
-                            </div>
-                            <div class="amount-positive">${fmt(parseFloat(i.TotalAmt))}</div>
-                        </div>`).join('')}
-            </div>
-            <div>
-                <div style="font-weight:600;padding:10px 12px;background:#d1fae5;border:1px solid #6ee7b7;border-radius:6px 6px 0 0;">
-                    Paid Bills (${paidBills.length})
-                </div>
-                ${paidBills.length === 0
-                    ? '<div style="padding:12px;border:1px solid #e5e7eb;border-top:none;color:#6b7280;">None yet</div>'
-                    : paidBills.map(b => `
-                        <div class="reconcile-item matched" style="border:1px solid #6ee7b7;border-top:none;display:flex;justify-content:space-between;align-items:center;">
-                            <div>
-                                <div style="font-weight:500;font-size:13px;">${b.VendorRef?.name || 'Unknown'}</div>
-                                <div style="color:#6b7280;font-size:12px;">${b.TxnDate || ''}</div>
-                            </div>
-                            <div class="amount-positive">${fmt(parseFloat(b.TotalAmt))}</div>
-                        </div>`).join('')}
-            </div>
-        </div>
+        ${matchedHTML}
     `;
+}        
+
+function selectBankItem(uid) {
+    selectedBankId = selectedBankId === uid ? null : uid;
+    updateMatchBtn();
+    drawReconciliation();
 }
+
+function selectQBOItem(uid) {
+    selectedQBOId = selectedQBOId === uid ? null : uid;
+    updateMatchBtn();
+    drawReconciliation();
+}
+
+function updateMatchBtn() {
+    const btn = document.getElementById('match-btn');
+    if (!btn) return;
+    const ready = selectedBankId && selectedQBOId;
+    btn.disabled = !ready;
+    btn.style.opacity = ready ? '1' : '0.4';
+    btn.style.cursor = ready ? 'pointer' : 'not-allowed';
+}
+
+function matchSelected() {
+    if (!selectedBankId || !selectedQBOId) return;
+    const bank = bankTransactionsData.find(t => t.uid === selectedBankId);
+    const allQBO = [
+        ...invoicesData.map(i => ({ uid: 'inv-' + i.Id, type: 'invoice', date: i.TxnDate, amount: parseFloat(i.TotalAmt) || 0, label: i.CustomerRef?.name || 'Unknown' })),
+        ...billsData.map(b => ({ uid: 'bill-' + b.Id, type: 'bill', date: b.TxnDate, amount: parseFloat(b.TotalAmt) || 0, label: b.VendorRef?.name || 'Unknown' }))
+    ];
+    const qbo = allQBO.find(r => r.uid === selectedQBOId);
+    if (bank && qbo) {
+        reconcileMatches.push({ bank, qbo });
+        selectedBankId = null;
+        selectedQBOId = null;
+        updateMatchBtn();
+        drawReconciliation();
+    }
+}
+
+function unmatchPair(index) {
+    reconcileMatches.splice(index, 1);
+    drawReconciliation();
+}
+
 
         function showPanel(panelName, event) {
             document.querySelectorAll('.panel').forEach(panel => panel.classList.remove('active'));
