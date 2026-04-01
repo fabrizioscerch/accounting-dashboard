@@ -281,8 +281,8 @@ app.get('/api/qbo/customers', async (req, res) => {
   }
   
   try {
-    const response = await fetch(`https://quickbooks.api.intuit.com/v3/company/${qboTokens.realmId}/query?query=SELECT * FROM Customer`, {
-      headers: {
+    const response = await fetch(`https://quickbooks.api.intuit.com/v3/company/${qboTokens.realmId}/query?query=SELECT * FROM Customer MAXRESULTS 1000`, {
+    headers: {
         'Authorization': `Bearer ${qboTokens.access_token}`,
         'Accept': 'application/json'
       }
