@@ -494,7 +494,7 @@ let classes = [];
             // Metrics
             const totalReceivable = invoicesData.reduce((sum, inv) => sum + (inv.TotalAmt || 0), 0);
             const totalPayable = billsData.reduce((sum, bill) => sum + (bill.TotalAmt || 0), 0);
-            const overdueCount = invoicesData.filter(inv => daysDiff(inv.DueDate) < 0).length;
+            const overdueCount = invoicesData.filter(inv => parseFloat(inv.Balance) > 0 && daysDiff(inv.DueDate) < 0).length;
             
             document.getElementById('overview-metrics').innerHTML = `
                 <div class="metric">
