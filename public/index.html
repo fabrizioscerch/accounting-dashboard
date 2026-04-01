@@ -524,7 +524,6 @@ let classes = [];
             const tbody = document.getElementById('invoices-list');
             tbody.innerHTML = invoicesData.map(invoice => {
                 const dueIn = daysDiff(invoice.DueDate);
-                const dueIn = daysDiff(invoice.DueDate);
         const balance = parseFloat(invoice.Balance) || 0;
         let status;
         if (balance === 0) {
