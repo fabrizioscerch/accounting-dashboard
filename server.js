@@ -470,6 +470,54 @@ app.post('/api/qbo/bills', async (req, res) => {
   }
 });
 
+// ── QBO: Send Invoice Reminder ────────────────────────────────────────────────
+
+app.post('/api/qbo/send-reminder', async (req, res) => {
+  if (!qboTokens?.access_token) {
+    return res.status(401).json({ error: 'QBO not connected' });
+  }
+
+  const { invoiceId } = req.body;
+  if (!invoiceId) {
+    return res.status(400).json({ error: 'Missing invoiceId' });
+  }
+
+  try {
+    const response = await fetch(
+      `https://quickbooks.api.intuit.com/v3/company/${qboTokens.realmId}/invoice/${invoiceId}/send`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${qboTokens.access_token}`,
+          'Content-Type': 'application/octet-stream',
+          'Accept': 'application/json'
+        }
+      }
+    );
+
+    if (response.status === 401) {
+      const refreshed = await refreshQboToken();
+      if (refreshed) {
+        return res.redirect(307, '/api/qbo/send-reminder');
+      }
+      return res.status(401).json({ error: 'Token expired' });
+    }
+
+    const data = await response.json();
+    if (data.Fault) {
+      const qboError = data.Fault.Error?.[0]?.Message || 'Unknown QBO error';
+      console.error('QBO send reminder fault:', JSON.stringify(data.Fault));
+      return res.status(400).json({ error: qboError });
+    }
+
+    console.log(`Reminder sent for invoice ${invoiceId}`);
+    res.json({ success: true, invoice: data.Invoice });
+  } catch (error) {
+    console.error('Send reminder error:', error);
+    res.status(500).json({ error: error.message || 'Failed to send reminder' });
+  }
+});
+
 // ── QBO: Items, Customers, Classes, Vendors ───────────────────────────────────
 
 app.get('/api/qbo/items', async (req, res) => {
@@ -532,6 +580,31 @@ app.get('/api/qbo/classes', async (req, res) => {
   }
 });
 
+app.get('/api/qbo/bank-transactions', async (req, res) => {
+  if (!qboTokens?.access_token) {
+    return res.status(401).json({ error: 'QBO not connected' });
+  }
+  try {
+    const [depRes, purRes] = await Promise.all([
+      fetch(`https://quickbooks.api.intuit.com/v3/company/${qboTokens.realmId}/query?query=${encodeURIComponent('SELECT * FROM Deposit MAXRESULTS 200')}`, {
+        headers: { 'Authorization': `Bearer ${qboTokens.access_token}`, 'Accept': 'application/json' }
+      }),
+      fetch(`https://quickbooks.api.intuit.com/v3/company/${qboTokens.realmId}/query?query=${encodeURIComponent('SELECT * FROM Purchase MAXRESULTS 200')}`, {
+        headers: { 'Authorization': `Bearer ${qboTokens.access_token}`, 'Accept': 'application/json' }
+      })
+    ]);
+    const depData = await depRes.json();
+    const purData = await purRes.json();
+    res.json({
+      deposits: depData.QueryResponse?.Deposit || [],
+      purchases: purData.QueryResponse?.Purchase || []
+    });
+  } catch (error) {
+    console.error('Bank transactions error:', error);
+    res.status(500).json({ error: 'Failed to fetch bank transactions' });
+  }
+});
+
 app.get('/api/qbo/vendors', async (req, res) => {
   if (!qboTokens?.access_token) {
     return res.status(401).json({ error: 'QBO not connected' });
@@ -549,6 +622,38 @@ app.get('/api/qbo/vendors', async (req, res) => {
     res.json(data);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch vendors' });
+  }
+});
+
+// ── QBO: Bank Accounts ────────────────────────────────────────────────────────
+
+app.get('/api/qbo/accounts', async (req, res) => {
+  if (!qboTokens?.access_token) {
+    return res.status(401).json({ error: 'QBO not connected' });
+  }
+
+  try {
+    const response = await fetch(
+      `https://quickbooks.api.intuit.com/v3/company/${qboTokens.realmId}/query?query=SELECT * FROM Account WHERE AccountType='Bank' MAXRESULTS 100`,
+      {
+        headers: {
+          'Authorization': `Bearer ${qboTokens.access_token}`,
+          'Accept': 'application/json'
+        }
+      }
+    );
+
+    if (response.status === 401) {
+      const refreshed = await refreshQboToken();
+      if (refreshed) return res.redirect('/api/qbo/accounts');
+      return res.status(401).json({ error: 'Token expired' });
+    }
+
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error('QBO accounts error:', error);
+    res.status(500).json({ error: 'Failed to fetch bank accounts' });
   }
 });
 

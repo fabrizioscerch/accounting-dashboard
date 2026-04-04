@@ -543,7 +543,7 @@ const totalPayable = billsData.reduce((sum, bill) => sum + (parseFloat(bill.Bala
                         <td>
                             <div class="actions">
                                 ${status !== 'paid' ? `<button class="btn btn-success" onclick="markPaid('${invoice.Id}')">Mark Paid</button>` : ''}
-                                ${status === 'overdue' ? `<button class="btn btn-secondary">Send Reminder</button>` : ''}
+                                ${status === 'overdue' ? `<button class="btn btn-secondary" onclick="sendReminder('${invoice.Id}', '${invoice.CustomerRef?.name || ''}')">Send Reminder</button>` : ''}
                             </div>
                         </td>
                     </tr>
@@ -843,6 +843,30 @@ function unmatchPair(index) {
         function markPaid(invoiceId) {
             alert('Mark paid functionality will be implemented');
         }
+
+        async function sendReminder(invoiceId, clientName) {
+            var msg = "Send a payment reminder to " + (clientName || "this client") + " for invoice " + invoiceId + "?";
+            if (!confirm(msg)) return;
+            try {
+                var response = await fetch("/api/qbo/send-reminder", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ invoiceId: invoiceId })
+                });
+                var data = await response.json();
+                if (response.ok) {
+                    alert("Reminder sent to " + (clientName || "client") + ".");
+                } else {
+                    alert("Could not send reminder: " + (data.error || "Unknown error"));
+                }
+            } catch (err) {
+                alert("Error sending reminder: " + err.message);
+            }
+        }
+
+        
+
+
 
         function approveBill(billId) {
             alert('Bill approval functionality will be implemented');
