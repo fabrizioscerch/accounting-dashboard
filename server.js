@@ -585,19 +585,23 @@ app.get('/api/qbo/bank-transactions', async (req, res) => {
     return res.status(401).json({ error: 'QBO not connected' });
   }
   try {
-    const [depRes, purRes] = await Promise.all([
-      fetch(`https://quickbooks.api.intuit.com/v3/company/${qboTokens.realmId}/query?query=${encodeURIComponent('SELECT * FROM Deposit MAXRESULTS 200')}`, {
-        headers: { 'Authorization': `Bearer ${qboTokens.access_token}`, 'Accept': 'application/json' }
-      }),
-      fetch(`https://quickbooks.api.intuit.com/v3/company/${qboTokens.realmId}/query?query=${encodeURIComponent('SELECT * FROM Purchase MAXRESULTS 200')}`, {
-        headers: { 'Authorization': `Bearer ${qboTokens.access_token}`, 'Accept': 'application/json' }
-      })
+    const headers = { 'Authorization': `Bearer ${qboTokens.access_token}`, 'Accept': 'application/json' };
+    const base = `https://quickbooks.api.intuit.com/v3/company/${qboTokens.realmId}/query?query=`;
+    const [depRes, purRes, trfRes, bpRes] = await Promise.all([
+      fetch(base + encodeURIComponent('SELECT * FROM Deposit MAXRESULTS 1000'), { headers }),
+      fetch(base + encodeURIComponent('SELECT * FROM Purchase MAXRESULTS 1000'), { headers }),
+      fetch(base + encodeURIComponent('SELECT * FROM Transfer MAXRESULTS 1000'), { headers }),
+      fetch(base + encodeURIComponent('SELECT * FROM BillPayment MAXRESULTS 1000'), { headers })
     ]);
     const depData = await depRes.json();
     const purData = await purRes.json();
+    const trfData = await trfRes.json();
+    const bpData  = await bpRes.json();
     res.json({
-      deposits: depData.QueryResponse?.Deposit || [],
-      purchases: purData.QueryResponse?.Purchase || []
+      deposits:     depData.QueryResponse?.Deposit     || [],
+      purchases:    purData.QueryResponse?.Purchase    || [],
+      transfers:    trfData.QueryResponse?.Transfer    || [],
+      billPayments: bpData.QueryResponse?.BillPayment  || []
     });
   } catch (error) {
     console.error('Bank transactions error:', error);

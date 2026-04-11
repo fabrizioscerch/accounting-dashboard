@@ -593,6 +593,20 @@ async function renderReconciliation() {
                     date: p.TxnDate,
                     amount: parseFloat(p.TotalAmt) || 0,
                     label: p.EntityRef?.name || p.PrivateNote || 'Bank Payment'
+                })),
+                ...(data.transfers || []).map(t => ({
+                    uid: 'trf-' + t.Id,
+                    type: 'transfer',
+                    date: t.TxnDate,
+                    amount: parseFloat(t.Amount) || 0,
+                    label: 'Transfer' + (t.PrivateNote ? ': ' + t.PrivateNote : '')
+                })),
+                ...(data.billPayments || []).map(b => ({
+                    uid: 'bp-' + b.Id,
+                    type: 'billpayment',
+                    date: b.TxnDate,
+                    amount: parseFloat(b.TotalAmt) || 0,
+                    label: b.VendorRef?.name || 'Bill Payment'
                 }))
             ].sort((a, b) => new Date(b.date) - new Date(a.date));
         }
@@ -634,7 +648,7 @@ function drawReconciliation() {
         <div class="rec-card ${selectedBankId === t.uid ? 'bank-selected' : ''}" onclick="selectBankItem('${t.uid}')">
             <div>
                 <div style="font-weight:500;font-size:13px;">${t.label}</div>
-                <div style="color:#6b7280;font-size:12px;">${t.date || ''} &nbsp;·&nbsp; ${t.type === 'deposit' ? 'Deposit' : 'Payment'}</div>
+                <div style="color:#6b7280;font-size:12px;">${t.date || ''} &nbsp;·&nbsp; ${ t.type === 'deposit' ? 'Deposit' : t.type === 'transfer' ? 'Transfer' : t.type === 'billpayment' ? 'Bill Payment' : 'Payment' }</div>
             </div>
             <div class="${t.type === 'deposit' ? 'amount-positive' : 'amount-negative'}">${t.type === 'deposit' ? '+' : '-'}${fmt(t.amount)}</div>
         </div>`).join('');
