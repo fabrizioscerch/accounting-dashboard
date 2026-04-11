@@ -575,30 +575,28 @@ const totalPayable = billsData.reduce((sum, bill) => sum + (parseFloat(bill.Bala
 async function renderReconciliation() {
     document.getElementById('reconcile-content').innerHTML = '<div class="loading">Loading bank transactions...</div>';
 
-    if (bankTransactionsData.length === 0) {
-        try {
-            const res = await fetch('/api/qbo/bank-transactions');
-            if (res.ok) {
-                const data = await res.json();
-                bankTransactionsData = [
-                    ...(data.deposits || []).map(d => ({
-                        uid: 'dep-' + d.Id,
-                        type: 'deposit',
-                        date: d.TxnDate,
-                        amount: parseFloat(d.TotalAmt) || 0,
-                        label: d.PrivateNote || 'Bank Deposit'
-                    })),
-                    ...(data.purchases || []).map(p => ({
-                        uid: 'pur-' + p.Id,
-                        type: 'purchase',
-                        date: p.TxnDate,
-                        amount: parseFloat(p.TotalAmt) || 0,
-                        label: p.EntityRef?.name || p.PrivateNote || 'Bank Payment'
-                    }))
-                ].sort((a, b) => new Date(b.date) - new Date(a.date));
-            }
-        } catch(e) { console.error('Bank transactions error:', e); }
-    }
+    try {
+        const res = await fetch('/api/qbo/bank-transactions');
+        if (res.ok) {
+            const data = await res.json();
+            bankTransactionsData = [
+                ...(data.deposits || []).map(d => ({
+                    uid: 'dep-' + d.Id,
+                    type: 'deposit',
+                    date: d.TxnDate,
+                    amount: parseFloat(d.TotalAmt) || 0,
+                    label: d.PrivateNote || 'Bank Deposit'
+                })),
+                ...(data.purchases || []).map(p => ({
+                    uid: 'pur-' + p.Id,
+                    type: 'purchase',
+                    date: p.TxnDate,
+                    amount: parseFloat(p.TotalAmt) || 0,
+                    label: p.EntityRef?.name || p.PrivateNote || 'Bank Payment'
+                }))
+            ].sort((a, b) => new Date(b.date) - new Date(a.date));
+        }
+    } catch(e) { console.error('Bank transactions error:', e); }
 
     drawReconciliation();
 }
@@ -627,7 +625,7 @@ function drawReconciliation() {
     const matchedQBOIds  = new Set(reconcileMatches.map(m => m.qbo.uid));
 
     const unmatchedBank = bankTransactionsData.filter(t => !matchedBankIds.has(t.uid));
-    const unmatchedQBO  = qboRecords.filter(r => !matchedQBOIds.has(r.uid));
+    const unmatchedQBO  = qboRecords.filter(r => !matchedQBOIds.has(r.uid) && r.status === 'pending');
 
     const bankEmpty = '<div style="padding:12px;color:#6b7280;font-size:13px;">No bank transactions found.<br>Connect your bank account in QBO to import transactions.</div>';
     const qboEmpty  = '<div style="padding:12px;color:#6b7280;font-size:13px;">No QBO records remaining.</div>';
