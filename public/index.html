@@ -51,6 +51,7 @@
         .badge-approved { background: #d1fae5; color: #065f46; }
         .badge-paid { background: #dbeafe; color: #1e40af; }
         .badge-overdue { background: #fee2e2; color: #991b1b; }
+        .badge-partial { background: #fef9c3; color: #854d0e; }
         .badge-draft { background: #f3f4f6; color: #4b5563; }
         .actions { display: flex; gap: 8px; }
         .panel { display: none; }
@@ -163,7 +164,7 @@
                     </div>
                     <table>
                         <thead>
-                            <tr><th>Vendor</th><th>Amount</th><th>Due Date</th><th>Status</th><th>Actions</th></tr>
+                            <tr><th>Vendor</th><th>Total</th><th>Balance Due</th><th>Due Date</th><th>Status</th><th>Actions</th></tr>
                         </thead>
                         <tbody id="bills-list"></tbody>
                     </table>
@@ -553,18 +554,27 @@ const totalPayable = billsData.reduce((sum, bill) => sum + (parseFloat(bill.Bala
 
         function renderPayables() {
             const tbody = document.getElementById('bills-list');
-            tbody.innerHTML = billsData.map(bill => {
-                const status = bill.Balance > 0 ? 'pending' : 'paid';
-                const statusBadge = status === 'paid' ? 'badge-paid' : 'badge-pending';
+            const pendingBills = billsData.filter(bill => parseFloat(bill.Balance) > 0);
+            if (pendingBills.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#6b7280;padding:16px;">No pending bills found.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = pendingBills.map(bill => {
+                const balance = parseFloat(bill.Balance) || 0;
+                const total = parseFloat(bill.TotalAmt) || 0;
+                const isPartial = balance > 0 && balance < total;
+                const status = isPartial ? 'partial' : 'pending';
+                const statusBadge = isPartial ? 'badge-partial' : 'badge-pending';
                 return `
                     <tr>
                         <td>${bill.VendorRef?.name || 'Unknown'}</td>
-                        <td>${fmt(bill.TotalAmt || 0)}</td>
+                        <td>${fmt(total)}</td>
+                        <td>${fmt(balance)}</td>
                         <td>${formatDate(bill.DueDate)}</td>
                         <td><span class="badge ${statusBadge}">${status}</span></td>
                         <td>
                             <div class="actions">
-                                ${status === 'pending' ? `<button class="btn btn-primary" onclick="approveBill('${bill.Id}')">Approve</button>` : ''}
+                                <button class="btn btn-primary" onclick="approveBill('${bill.Id}')">Approve</button>
                             </div>
                         </td>
                     </tr>
@@ -585,14 +595,14 @@ async function renderReconciliation() {
                     type: 'deposit',
                     date: d.TxnDate,
                     amount: parseFloat(d.TotalAmt) || 0,
-                    label: d.PrivateNote || 'Bank Deposit'
+                    label: d.PrivateNote || d.Memo || ('Deposit #' + d.DocNumber) || 'Bank Deposit'
                 })),
                 ...(data.purchases || []).map(p => ({
                     uid: 'pur-' + p.Id,
                     type: 'purchase',
                     date: p.TxnDate,
                     amount: parseFloat(p.TotalAmt) || 0,
-                    label: p.EntityRef?.name || p.PrivateNote || 'Bank Payment'
+                    label: (p.EntityRef?.name ? p.EntityRef.name + (p.PaymentType ? ' · ' + p.PaymentType : '') : null) || p.PrivateNote || p.Memo || 'Bank Payment'
                 })),
                 ...(data.transfers || []).map(t => ({
                     uid: 'trf-' + t.Id,
@@ -607,6 +617,13 @@ async function renderReconciliation() {
                     date: b.TxnDate,
                     amount: parseFloat(b.TotalAmt) || 0,
                     label: b.VendorRef?.name || 'Bill Payment'
+                })),
+                ...(data.journalEntries || []).map(j => ({
+                    uid: 'je-' + j.Id,
+                    type: 'journal',
+                    date: j.TxnDate,
+                    amount: parseFloat(j.TotalAmt) || 0,
+                    label: j.PrivateNote || j.DocNumber ? ('JE #' + j.DocNumber + (j.PrivateNote ? ': ' + j.PrivateNote : '')) : 'Journal Entry'
                 }))
             ].sort((a, b) => new Date(b.date) - new Date(a.date));
         }
@@ -622,16 +639,18 @@ function drawReconciliation() {
             type: 'invoice',
             date: i.TxnDate,
             amount: parseFloat(i.TotalAmt) || 0,
+            balance: parseFloat(i.Balance) || 0,
             label: i.CustomerRef?.name || 'Unknown Customer',
-            status: parseFloat(i.Balance) === 0 ? 'paid' : 'pending'
+            status: parseFloat(i.Balance) === 0 ? 'paid' : (parseFloat(i.Balance) < parseFloat(i.TotalAmt) ? 'partial' : 'pending')
         })),
         ...billsData.map(b => ({
             uid: 'bill-' + b.Id,
             type: 'bill',
             date: b.TxnDate,
             amount: parseFloat(b.TotalAmt) || 0,
+            balance: parseFloat(b.Balance) || 0,
             label: b.VendorRef?.name || 'Unknown Vendor',
-            status: parseFloat(b.Balance) === 0 ? 'paid' : 'pending'
+            status: parseFloat(b.Balance) === 0 ? 'paid' : (parseFloat(b.Balance) < parseFloat(b.TotalAmt) ? 'partial' : 'pending')
         }))
     ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
@@ -639,7 +658,7 @@ function drawReconciliation() {
     const matchedQBOIds  = new Set(reconcileMatches.map(m => m.qbo.uid));
 
     const unmatchedBank = bankTransactionsData.filter(t => !matchedBankIds.has(t.uid));
-    const unmatchedQBO  = qboRecords.filter(r => !matchedQBOIds.has(r.uid) && r.status === 'pending');
+    const unmatchedQBO  = qboRecords.filter(r => !matchedQBOIds.has(r.uid) && (r.status === 'pending' || r.status === 'partial'));
 
     const bankEmpty = '<div style="padding:12px;color:#6b7280;font-size:13px;">No bank transactions found.<br>Connect your bank account in QBO to import transactions.</div>';
     const qboEmpty  = '<div style="padding:12px;color:#6b7280;font-size:13px;">No QBO records remaining.</div>';
@@ -648,7 +667,7 @@ function drawReconciliation() {
         <div class="rec-card ${selectedBankId === t.uid ? 'bank-selected' : ''}" onclick="selectBankItem('${t.uid}')">
             <div>
                 <div style="font-weight:500;font-size:13px;">${t.label}</div>
-                <div style="color:#6b7280;font-size:12px;">${t.date || ''} &nbsp;·&nbsp; ${ t.type === 'deposit' ? 'Deposit' : t.type === 'transfer' ? 'Transfer' : t.type === 'billpayment' ? 'Bill Payment' : 'Payment' }</div>
+                <div style="color:#6b7280;font-size:12px;">${t.date || ''} &nbsp;·&nbsp; ${ t.type === 'deposit' ? 'Deposit' : t.type === 'transfer' ? 'Transfer' : t.type === 'billpayment' ? 'Bill Payment' : t.type === 'journal' ? 'Journal Entry' : 'Payment' }</div>
             </div>
             <div class="${t.type === 'deposit' ? 'amount-positive' : 'amount-negative'}">${t.type === 'deposit' ? '+' : '-'}${fmt(t.amount)}</div>
         </div>`).join('');
@@ -658,7 +677,8 @@ function drawReconciliation() {
             <div>
                 <div style="font-weight:500;font-size:13px;">${r.label}</div>
                 <div style="color:#6b7280;font-size:12px;">${r.date || ''} &nbsp;·&nbsp; ${r.type === 'invoice' ? 'Invoice' : 'Bill'} &nbsp;·&nbsp;
-                    <span class="badge ${r.status === 'paid' ? 'badge-paid' : 'badge-pending'}">${r.status}</span>
+                    <span class="badge ${r.status === 'partial' ? 'badge-partial' : 'badge-pending'}">${r.status}</span>
+                    ${r.status === 'partial' ? '<span style="color:#d97706;font-size:11px;margin-left:4px;">Balance: ' + fmt(r.balance) + '</span>' : ''}
                 </div>
             </div>
             <div class="${r.type === 'invoice' ? 'amount-positive' : 'amount-negative'}">${r.type === 'invoice' ? '+' : '-'}${fmt(r.amount)}</div>
