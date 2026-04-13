@@ -600,7 +600,12 @@ async function renderReconciliation() {
         if (res.ok) {
             const data = await res.json();
             bankTransactionsData = [
-                ...(data.deposits || []).map(d => ({
+                ...(data.deposits || [])
+                .filter(d => {
+                    const note = (d.PrivateNote || d.Memo || '').toLowerCase();
+                    return !note.includes('system-recorded') && !note.includes('quickbooks payments');
+                })
+                .map(d => ({
                     uid: 'dep-' + d.Id,
                     type: 'deposit',
                     date: d.TxnDate,
