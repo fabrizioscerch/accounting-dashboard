@@ -718,10 +718,13 @@ function drawReconciliation() {
     const matchedBankIds = new Set(reconcileMatches.map(m => m.bank.uid));
     const matchedQBOIds  = new Set(reconcileMatches.map(m => m.qbo.uid));
 
-    // Apply account filter (if no accounts selected, show all)
-    const accountFiltered = selectedAccountIds.size > 0
-        ? bankTransactionsData.filter(t => !t.accountId || selectedAccountIds.has(t.accountId))
-        : bankTransactionsData;
+    // Apply account filter — only show transactions whose accountId is in the
+    // selected set. Transactions with no accountId are hidden unless every
+    // account is selected (which means "show all"). Empty selection = show nothing.
+    const allSelected = qboBankAccounts.length > 0 && selectedAccountIds.size === qboBankAccounts.length;
+    const accountFiltered = allSelected
+        ? bankTransactionsData
+        : bankTransactionsData.filter(t => t.accountId && selectedAccountIds.has(t.accountId));
 
     const unmatchedBank = accountFiltered.filter(t => !matchedBankIds.has(t.uid));
     const unmatchedQBO  = qboRecords.filter(r => !matchedQBOIds.has(r.uid) && (r.status === 'pending' || r.status === 'partial'));
