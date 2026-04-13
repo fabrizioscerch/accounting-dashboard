@@ -149,7 +149,7 @@
                     </div>
                     <table>
                         <thead>
-                            <tr><th>Client</th><th>Invoice #</th><th>Amount</th><th>Due Date</th><th>Status</th><th>Actions</th></tr>
+                            <tr><th>Client</th><th>Invoice #</th><th>Total</th><th>Balance Due</th><th>Due Date</th><th>Status</th><th>Actions</th></tr>
                         </thead>
                         <tbody id="invoices-list"></tbody>
                     </table>
@@ -522,28 +522,38 @@ const totalPayable = billsData.reduce((sum, bill) => sum + (parseFloat(bill.Bala
 
         function renderReceivables() {
             const tbody = document.getElementById('invoices-list');
-            tbody.innerHTML = invoicesData.map(invoice => {
+            const unpaidInvoices = invoicesData.filter(inv => parseFloat(inv.Balance) > 0);
+            if (unpaidInvoices.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#6b7280;padding:16px;">No outstanding invoices found.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = unpaidInvoices.map(invoice => {
                 const dueIn = daysDiff(invoice.DueDate);
                 const balance = parseFloat(invoice.Balance) || 0;
+                const total = parseFloat(invoice.TotalAmt) || 0;
+                const isPartial = balance > 0 && balance < total;
                 let status;
-                if (balance === 0) {
-                    status = 'paid';
+                if (isPartial && dueIn < 0) {
+                    status = 'overdue';
                 } else if (dueIn < 0) {
                     status = 'overdue';
+                } else if (isPartial) {
+                    status = 'partial';
                 } else {
                     status = 'pending';
                 }
-                const statusBadge = status === 'overdue' ? 'badge-overdue' : status === 'paid' ? 'badge-paid' : 'badge-pending';
+                const statusBadge = status === 'overdue' ? 'badge-overdue' : status === 'partial' ? 'badge-partial' : 'badge-pending';
                 return `
                     <tr>
                         <td>${invoice.CustomerRef?.name || 'Unknown'}</td>
                         <td>${invoice.DocNumber || 'N/A'}</td>
-                        <td>${fmt(invoice.TotalAmt || 0)}</td>
+                        <td>${fmt(total)}</td>
+                        <td>${fmt(balance)}${isPartial ? '<span style="color:#d97706;font-size:11px;margin-left:4px;">(partial)</span>' : ''}</td>
                         <td>${formatDate(invoice.DueDate)}</td>
                         <td><span class="badge ${statusBadge}">${status}</span></td>
                         <td>
                             <div class="actions">
-                                ${status !== 'paid' ? `<button class="btn btn-success" onclick="markPaid('${invoice.Id}')">Mark Paid</button>` : ''}
+                                <button class="btn btn-success" onclick="markPaid('${invoice.Id}')">Mark Paid</button>
                                 ${status === 'overdue' ? `<button class="btn btn-secondary" onclick="sendReminder('${invoice.Id}', '${invoice.CustomerRef?.name || ''}')">Send Reminder</button>` : ''}
                             </div>
                         </td>
