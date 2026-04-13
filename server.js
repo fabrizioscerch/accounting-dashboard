@@ -580,11 +580,6 @@ app.get('/api/qbo/classes', async (req, res) => {
   }
 });
 
-// Accounts to include in the Bank Transactions feed.
-// A QBO bank account is included when its Name or AcctNum (case-insensitive)
-// contains any of the strings below.
-const BANK_ACCOUNT_FILTERS = ['1384', 'wise'];
-
 app.get('/api/qbo/bank-transactions', async (req, res) => {
   if (!qboTokens?.access_token) {
     return res.status(401).json({ error: 'QBO not connected' });
@@ -592,23 +587,6 @@ app.get('/api/qbo/bank-transactions', async (req, res) => {
   try {
     const headers = { 'Authorization': `Bearer ${qboTokens.access_token}`, 'Accept': 'application/json' };
     const base = `https://quickbooks.api.intuit.com/v3/company/${qboTokens.realmId}/query?query=`;
-
-    // 1. Resolve allowed account IDs from QBO
-    const acctRes  = await fetch(base + encodeURIComponent("SELECT * FROM Account WHERE AccountType='Bank' MAXRESULTS 100"), { headers });
-    const acctData = await acctRes.json();
-    const allAccounts = acctData.QueryResponse?.Account || [];
-    const allowedIds = new Set(
-      allAccounts
-        .filter(a => {
-          const name   = (a.Name    || '').toLowerCase();
-          const acctNum = (a.AcctNum || '').toLowerCase();
-          return BANK_ACCOUNT_FILTERS.some(f => name.includes(f) || acctNum.includes(f));
-        })
-        .map(a => a.Id)
-    );
-    console.log('Bank transaction filter — matched accounts:', [...allowedIds].length, 'of', allAccounts.length);
-
-    // 2. Fetch all transaction types in parallel
     const [depRes, purRes, trfRes, bpRes, jeRes] = await Promise.all([
       fetch(base + encodeURIComponent('SELECT * FROM Deposit MAXRESULTS 1000'), { headers }),
       fetch(base + encodeURIComponent('SELECT * FROM Purchase MAXRESULTS 1000'), { headers }),
@@ -621,28 +599,13 @@ app.get('/api/qbo/bank-transactions', async (req, res) => {
     const trfData = await trfRes.json();
     const bpData  = await bpRes.json();
     const jeData  = await jeRes.json();
-
-    // 3. Filter each type to only the allowed accounts.
-    //    If no accounts matched (QBO not yet connected / names changed),
-    //    fall back to returning everything so the UI is never blank.
-    const filter = allowedIds.size > 0;
-
-    const deposits = (depData.QueryResponse?.Deposit || [])
-      .filter(d => !filter || allowedIds.has(d.DepositToAccountRef?.value));
-
-    const purchases = (purData.QueryResponse?.Purchase || [])
-      .filter(p => !filter || allowedIds.has(p.AccountRef?.value));
-
-    const transfers = (trfData.QueryResponse?.Transfer || [])
-      .filter(t => !filter || allowedIds.has(t.FromAccountRef?.value) || allowedIds.has(t.ToAccountRef?.value));
-
-    const billPayments = (bpData.QueryResponse?.BillPayment || [])
-      .filter(b => !filter || allowedIds.has(b.CheckPayment?.BankAccountRef?.value) || allowedIds.has(b.CreditCardPayment?.CCAccountRef?.value));
-
-    const journalEntries = (jeData.QueryResponse?.JournalEntry || [])
-      .filter(j => !filter || (j.Line || []).some(l => allowedIds.has(l.JournalEntryLineDetail?.AccountRef?.value)));
-
-    res.json({ deposits, purchases, transfers, billPayments, journalEntries });
+    res.json({
+      deposits:      depData.QueryResponse?.Deposit      || [],
+      purchases:     purData.QueryResponse?.Purchase     || [],
+      transfers:     trfData.QueryResponse?.Transfer     || [],
+      billPayments:  bpData.QueryResponse?.BillPayment   || [],
+      journalEntries: jeData.QueryResponse?.JournalEntry || []
+    });
   } catch (error) {
     console.error('Bank transactions error:', error);
     res.status(500).json({ error: 'Failed to fetch bank transactions' });

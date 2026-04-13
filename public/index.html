@@ -53,6 +53,9 @@
         .badge-overdue { background: #fee2e2; color: #991b1b; }
         .badge-partial { background: #fef9c3; color: #854d0e; }
         .badge-draft { background: #f3f4f6; color: #4b5563; }
+        .acct-pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid #d1d5db; background: #f9fafb; color: #374151; transition: all .15s; user-select: none; }
+        .acct-pill.active { background: #1e40af; color: #fff; border-color: #1e40af; }
+        .acct-pill:hover:not(.active) { background: #e5e7eb; }
         .actions { display: flex; gap: 8px; }
         .panel { display: none; }
         .panel.active { display: block; }
@@ -280,6 +283,8 @@ let bankTransactionsData = [];
 let reconcileMatches = [];
 let selectedBankId = null;
 let selectedQBOId = null;
+let qboBankAccounts = [];        // { id, name } list fetched from QBO
+let selectedAccountIds = new Set(); // IDs currently active in the filter
         // Utility functions
         const fmt = (amount) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
         const formatDate = (date) => new Date(date).toLocaleDateString();
@@ -596,9 +601,27 @@ async function renderReconciliation() {
     document.getElementById('reconcile-content').innerHTML = '<div class="loading">Loading bank transactions...</div>';
 
     try {
-        const res = await fetch('/api/qbo/bank-transactions');
-        if (res.ok) {
-            const data = await res.json();
+        const [txRes, acctRes] = await Promise.all([
+            fetch('/api/qbo/bank-transactions'),
+            fetch('/api/qbo/accounts')
+        ]);
+
+        // Load QBO bank accounts for the filter
+        if (acctRes.ok) {
+            const acctData = await acctRes.json();
+            const accounts = acctData.QueryResponse?.Account || [];
+            qboBankAccounts = accounts.map(a => ({
+                id: a.Id,
+                name: a.Name + (a.AcctNum ? ' ···' + a.AcctNum.slice(-4) : '')
+            }));
+            // On first load, pre-select all accounts so nothing is hidden by default
+            if (selectedAccountIds.size === 0) {
+                qboBankAccounts.forEach(a => selectedAccountIds.add(a.id));
+            }
+        }
+
+        if (txRes.ok) {
+            const data = await txRes.json();
             bankTransactionsData = [
                 ...(data.deposits || [])
                 .filter(d => {
@@ -610,40 +633,63 @@ async function renderReconciliation() {
                     type: 'deposit',
                     date: d.TxnDate,
                     amount: parseFloat(d.TotalAmt) || 0,
-                    label: d.PrivateNote || d.Memo || ('Deposit #' + d.DocNumber) || 'Bank Deposit'
+                    label: d.PrivateNote || d.Memo || ('Deposit #' + d.DocNumber) || 'Bank Deposit',
+                    accountId: d.DepositToAccountRef?.value || null
                 })),
                 ...(data.purchases || []).map(p => ({
                     uid: 'pur-' + p.Id,
                     type: 'purchase',
                     date: p.TxnDate,
                     amount: parseFloat(p.TotalAmt) || 0,
-                    label: (p.EntityRef?.name ? p.EntityRef.name + (p.PaymentType ? ' · ' + p.PaymentType : '') : null) || p.PrivateNote || p.Memo || 'Bank Payment'
+                    label: (p.EntityRef?.name ? p.EntityRef.name + (p.PaymentType ? ' · ' + p.PaymentType : '') : null) || p.PrivateNote || p.Memo || 'Bank Payment',
+                    accountId: p.AccountRef?.value || null
                 })),
                 ...(data.transfers || []).map(t => ({
                     uid: 'trf-' + t.Id,
                     type: 'transfer',
                     date: t.TxnDate,
                     amount: parseFloat(t.Amount) || 0,
-                    label: 'Transfer' + (t.PrivateNote ? ': ' + t.PrivateNote : '')
+                    label: 'Transfer' + (t.PrivateNote ? ': ' + t.PrivateNote : ''),
+                    accountId: t.FromAccountRef?.value || null
                 })),
                 ...(data.billPayments || []).map(b => ({
                     uid: 'bp-' + b.Id,
                     type: 'billpayment',
                     date: b.TxnDate,
                     amount: parseFloat(b.TotalAmt) || 0,
-                    label: b.VendorRef?.name || 'Bill Payment'
+                    label: b.VendorRef?.name || 'Bill Payment',
+                    accountId: b.CheckPayment?.BankAccountRef?.value || b.CreditCardPayment?.CCAccountRef?.value || null
                 })),
                 ...(data.journalEntries || []).map(j => ({
                     uid: 'je-' + j.Id,
                     type: 'journal',
                     date: j.TxnDate,
                     amount: parseFloat(j.TotalAmt) || 0,
-                    label: j.PrivateNote || j.DocNumber ? ('JE #' + j.DocNumber + (j.PrivateNote ? ': ' + j.PrivateNote : '')) : 'Journal Entry'
+                    label: j.PrivateNote || j.DocNumber ? ('JE #' + j.DocNumber + (j.PrivateNote ? ': ' + j.PrivateNote : '')) : 'Journal Entry',
+                    accountId: (j.Line || []).find(l => l.JournalEntryLineDetail?.AccountRef?.value)?.JournalEntryLineDetail?.AccountRef?.value || null
                 }))
             ].sort((a, b) => new Date(b.date) - new Date(a.date));
         }
     } catch(e) { console.error('Bank transactions error:', e); }
 
+    drawReconciliation();
+}
+
+function toggleAccountFilter(id) {
+    if (selectedAccountIds.has(id)) {
+        selectedAccountIds.delete(id);
+    } else {
+        selectedAccountIds.add(id);
+    }
+    drawReconciliation();
+}
+
+function setAllAccounts(select) {
+    if (select) {
+        qboBankAccounts.forEach(a => selectedAccountIds.add(a.id));
+    } else {
+        selectedAccountIds.clear();
+    }
     drawReconciliation();
 }
 
@@ -672,7 +718,12 @@ function drawReconciliation() {
     const matchedBankIds = new Set(reconcileMatches.map(m => m.bank.uid));
     const matchedQBOIds  = new Set(reconcileMatches.map(m => m.qbo.uid));
 
-    const unmatchedBank = bankTransactionsData.filter(t => !matchedBankIds.has(t.uid));
+    // Apply account filter (if no accounts selected, show all)
+    const accountFiltered = selectedAccountIds.size > 0
+        ? bankTransactionsData.filter(t => !t.accountId || selectedAccountIds.has(t.accountId))
+        : bankTransactionsData;
+
+    const unmatchedBank = accountFiltered.filter(t => !matchedBankIds.has(t.uid));
     const unmatchedQBO  = qboRecords.filter(r => !matchedQBOIds.has(r.uid) && (r.status === 'pending' || r.status === 'partial'));
 
     const bankEmpty = '<div style="padding:12px;color:#6b7280;font-size:13px;">No bank transactions found.<br>Connect your bank account in QBO to import transactions.</div>';
@@ -717,7 +768,23 @@ function drawReconciliation() {
                 </div>`).join('')}
         </div>`;
 
+    // Account filter pill bar (only shown when QBO accounts are available)
+    const pillBarHTML = qboBankAccounts.length === 0 ? '' : `
+        <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:10px 0 14px;">
+            <span style="font-size:12px;font-weight:600;color:#6b7280;margin-right:4px;">ACCOUNT</span>
+            ${qboBankAccounts.map(a => `
+                <span class="acct-pill ${selectedAccountIds.has(a.id) ? 'active' : ''}"
+                      onclick="toggleAccountFilter('${a.id}')">
+                    ${a.name}
+                </span>`).join('')}
+            <span style="margin-left:auto;display:flex;gap:6px;">
+                <button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="setAllAccounts(true)">All</button>
+                <button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="setAllAccounts(false)">None</button>
+            </span>
+        </div>`;
+
     document.getElementById('reconcile-content').innerHTML = `
+        ${pillBarHTML}
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:8px;">
             <div>
                 <div style="font-weight:600;padding:10px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px 6px 0 0;font-size:13px;">
