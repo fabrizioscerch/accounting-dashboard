@@ -903,6 +903,9 @@ function updateMatchBtn() {
     const hasAny = selectedBankIds.size > 0 || selectedQBOIds.size > 0;
     if (!hasAny) { summary.style.display = 'none'; return; }
 
+    // fmt may not be in scope here (defined inside DOMContentLoaded), so use inline formatter
+    const fmtAmt = (n) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
+
     const bankTotal = bankTransactionsData
         .filter(t => selectedBankIds.has(t.uid))
         .reduce((s, t) => s + t.amount, 0);
@@ -917,14 +920,14 @@ function updateMatchBtn() {
 
     const diff = bankTotal - qboTotal;
     const diffColor  = Math.abs(diff) < 0.01 ? '#059669' : '#dc2626';
-    const diffLabel  = Math.abs(diff) < 0.01 ? '✓ Balanced' : (diff > 0 ? `+${fmt(diff)} over` : `${fmt(diff)} short`);
+    const diffLabel  = Math.abs(diff) < 0.01 ? '✓ Balanced' : (diff > 0 ? `+${fmtAmt(diff)} over` : `${fmtAmt(diff)} short`);
 
     const bankPart = selectedBankIds.size > 0
-        ? `<span><strong>${selectedBankIds.size} payment${selectedBankIds.size !== 1 ? 's' : ''}</strong> &nbsp;${fmt(bankTotal)}</span>`
+        ? `<span><strong>${selectedBankIds.size} payment${selectedBankIds.size !== 1 ? 's' : ''}</strong> &nbsp;<span style="color:#0369a1;">${fmtAmt(bankTotal)}</span></span>`
         : `<span style="color:#9ca3af;">No payments selected</span>`;
 
     const qboPart = selectedQBOIds.size > 0
-        ? `<span><strong>${selectedQBOIds.size} invoice${selectedQBOIds.size !== 1 ? 's' : ''}</strong> &nbsp;${fmt(qboTotal)}</span>`
+        ? `<span><strong>${selectedQBOIds.size} invoice${selectedQBOIds.size !== 1 ? 's' : ''}</strong> &nbsp;<span style="color:#0369a1;">${fmtAmt(qboTotal)}</span></span>`
         : `<span style="color:#9ca3af;">No invoices selected</span>`;
 
     summary.style.display = 'flex';
