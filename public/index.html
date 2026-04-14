@@ -180,6 +180,7 @@
                         <span class="section-title">Bank Reconciliation</span>
                         <button class="btn btn-primary" id="match-btn" onclick="matchSelected()" style="opacity:0.4;cursor:not-allowed;" disabled>Match Selected</button>
                     </div>
+                    <div id="selection-summary" style="display:none;align-items:center;gap:16px;padding:10px 14px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:7px;margin-bottom:12px;font-size:13px;flex-wrap:wrap;"></div>
                     <div class="reconcile-grid">
                         <div style="padding: 12px; font-weight: 600; background: #f9fafb; border-bottom: 1px solid #e5e7eb;">Bank Transactions</div>
                         <div style="padding: 12px; font-weight: 600; background: #f9fafb; border-bottom: 1px solid #e5e7eb;">QBO Records</div>
@@ -895,6 +896,43 @@ function updateMatchBtn() {
     const bLabel = selectedBankIds.size > 1 ? `${selectedBankIds.size} Payments` : '1 Payment';
     const qLabel = selectedQBOIds.size > 1 ? `${selectedQBOIds.size} Invoices` : '1 Invoice';
     btn.textContent = ready ? `Match ${bLabel} → ${qLabel}` : 'Match Selected';
+
+    // Live subtotal summary bar
+    const summary = document.getElementById('selection-summary');
+    if (!summary) return;
+    const hasAny = selectedBankIds.size > 0 || selectedQBOIds.size > 0;
+    if (!hasAny) { summary.style.display = 'none'; return; }
+
+    const bankTotal = bankTransactionsData
+        .filter(t => selectedBankIds.has(t.uid))
+        .reduce((s, t) => s + t.amount, 0);
+
+    const allQBO = [
+        ...invoicesData.map(i => ({ uid: 'inv-' + i.Id, amount: parseFloat(i.TotalAmt) || 0 })),
+        ...billsData.map(b => ({ uid: 'bill-' + b.Id, amount: parseFloat(b.TotalAmt) || 0 }))
+    ];
+    const qboTotal = allQBO
+        .filter(r => selectedQBOIds.has(r.uid))
+        .reduce((s, r) => s + r.amount, 0);
+
+    const diff = bankTotal - qboTotal;
+    const diffColor  = Math.abs(diff) < 0.01 ? '#059669' : '#dc2626';
+    const diffLabel  = Math.abs(diff) < 0.01 ? '✓ Balanced' : (diff > 0 ? `+${fmt(diff)} over` : `${fmt(diff)} short`);
+
+    const bankPart = selectedBankIds.size > 0
+        ? `<span><strong>${selectedBankIds.size} payment${selectedBankIds.size !== 1 ? 's' : ''}</strong> &nbsp;${fmt(bankTotal)}</span>`
+        : `<span style="color:#9ca3af;">No payments selected</span>`;
+
+    const qboPart = selectedQBOIds.size > 0
+        ? `<span><strong>${selectedQBOIds.size} invoice${selectedQBOIds.size !== 1 ? 's' : ''}</strong> &nbsp;${fmt(qboTotal)}</span>`
+        : `<span style="color:#9ca3af;">No invoices selected</span>`;
+
+    summary.style.display = 'flex';
+    summary.innerHTML = `
+        ${bankPart}
+        <span style="color:#6b7280;">↔</span>
+        ${qboPart}
+        <span style="margin-left:auto;font-weight:600;color:${diffColor};">${diffLabel}</span>`;
 }
 
 function matchSelected() {
