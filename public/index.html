@@ -280,9 +280,9 @@
         let billsData = [];
         let transactionsData = [];
 let bankTransactionsData = [];
-let reconcileMatches = [];
+let reconcileMatches = [];   // [{ bank, qboItems: [...] }]
 let selectedBankId = null;
-let selectedQBOId = null;
+let selectedQBOIds = new Set(); // supports selecting multiple QBO records
 let qboBankAccounts = [];        // { id, name } list fetched from QBO
 let selectedAccountIds = new Set(); // IDs currently active in the filter
         // Utility functions
@@ -716,7 +716,7 @@ function drawReconciliation() {
     ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
     const matchedBankIds = new Set(reconcileMatches.map(m => m.bank.uid));
-    const matchedQBOIds  = new Set(reconcileMatches.map(m => m.qbo.uid));
+    const matchedQBOIds  = new Set(reconcileMatches.flatMap(m => m.qboItems.map(q => q.uid)));
 
     // Apply account filter — only show transactions whose accountId is in the
     // selected set. Transactions with no accountId are hidden unless every
@@ -741,33 +741,59 @@ function drawReconciliation() {
             <div class="${t.type === 'deposit' ? 'amount-positive' : 'amount-negative'}">${t.type === 'deposit' ? '+' : '-'}${fmt(t.amount)}</div>
         </div>`).join('');
 
-    const qboHTML = unmatchedQBO.length === 0 ? qboEmpty : unmatchedQBO.map(r => `
-        <div class="rec-card ${selectedQBOId === r.uid ? 'qbo-selected' : ''}" onclick="selectQBOItem('${r.uid}')">
-            <div>
-                <div style="font-weight:500;font-size:13px;">${r.label}</div>
-                <div style="color:#6b7280;font-size:12px;">${r.date || ''} &nbsp;·&nbsp; ${r.type === 'invoice' ? 'Invoice' : 'Bill'} &nbsp;·&nbsp;
-                    <span class="badge ${r.status === 'partial' ? 'badge-partial' : 'badge-pending'}">${r.status}</span>
-                    ${r.status === 'partial' ? '<span style="color:#d97706;font-size:11px;margin-left:4px;">Balance: ' + fmt(r.balance) + '</span>' : ''}
+    const qboHTML = unmatchedQBO.length === 0 ? qboEmpty : unmatchedQBO.map(r => {
+        const isSelected = selectedQBOIds.has(r.uid);
+        return `
+        <div class="rec-card ${isSelected ? 'qbo-selected' : ''}" onclick="selectQBOItem('${r.uid}')" style="cursor:pointer;">
+            <div style="display:flex;align-items:flex-start;gap:10px;flex:1;">
+                <div style="margin-top:2px;flex-shrink:0;">
+                    <div style="width:16px;height:16px;border-radius:4px;border:2px solid ${isSelected ? '#1e40af' : '#d1d5db'};background:${isSelected ? '#1e40af' : '#fff'};display:flex;align-items:center;justify-content:center;">
+                        ${isSelected ? '<svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4L4 7L9 1" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>' : ''}
+                    </div>
+                </div>
+                <div>
+                    <div style="font-weight:500;font-size:13px;">${r.label}</div>
+                    <div style="color:#6b7280;font-size:12px;">${r.date || ''} &nbsp;·&nbsp; ${r.type === 'invoice' ? 'Invoice' : 'Bill'} &nbsp;·&nbsp;
+                        <span class="badge ${r.status === 'partial' ? 'badge-partial' : 'badge-pending'}">${r.status}</span>
+                        ${r.status === 'partial' ? '<span style="color:#d97706;font-size:11px;margin-left:4px;">Balance: ' + fmt(r.balance) + '</span>' : ''}
+                    </div>
                 </div>
             </div>
             <div class="${r.type === 'invoice' ? 'amount-positive' : 'amount-negative'}">${r.type === 'invoice' ? '+' : '-'}${fmt(r.amount)}</div>
-        </div>`).join('');
+        </div>`;
+    }).join('');
 
     const matchedHTML = reconcileMatches.length === 0 ? '' : `
         <div style="margin-top:24px;">
-            <div style="font-weight:600;font-size:14px;margin-bottom:8px;color:#059669;">Matched Pairs (${reconcileMatches.length})</div>
+            <div style="font-weight:600;font-size:14px;margin-bottom:8px;color:#059669;">
+                Matched (${reconcileMatches.length} payment${reconcileMatches.length !== 1 ? 's' : ''})
+            </div>
             ${reconcileMatches.map((m, i) => `
-                <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:#d1fae5;border:1px solid #6ee7b7;border-radius:6px;margin-bottom:6px;">
-                    <div style="flex:1;font-size:13px;">
-                        <span style="font-weight:500;">${m.bank.label}</span>
-                        <span style="color:#6b7280;"> ${m.bank.date} · ${fmt(m.bank.amount)}</span>
+                <div style="padding:12px 14px;background:#d1fae5;border:1px solid #6ee7b7;border-radius:8px;margin-bottom:10px;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${m.qboItems.length ? '10px' : '0'};">
+                        <div style="font-size:13px;">
+                            <span style="font-weight:600;">${m.bank.label}</span>
+                            <span style="color:#065f46;margin-left:8px;">${fmt(m.bank.amount)}</span>
+                            <span style="color:#6b7280;font-size:11px;margin-left:6px;">${m.bank.date}</span>
+                        </div>
+                        <button class="btn btn-secondary" style="font-size:11px;padding:4px 8px;" onclick="unmatchGroup(${i})">Unmatch all</button>
                     </div>
-                    <div style="color:#059669;font-weight:600;">↔</div>
-                    <div style="flex:1;font-size:13px;">
-                        <span style="font-weight:500;">${m.qbo.label}</span>
-                        <span style="color:#6b7280;"> ${m.qbo.date} · ${fmt(m.qbo.amount)}</span>
+                    ${m.qboItems.map((q, qi) => `
+                        <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:rgba(255,255,255,0.6);border-radius:5px;margin-bottom:4px;font-size:12px;">
+                            <div>
+                                <span style="color:#059669;margin-right:6px;">↳</span>
+                                <span style="font-weight:500;">${q.label}</span>
+                                <span style="color:#6b7280;margin-left:6px;">${q.type === 'invoice' ? 'Invoice' : 'Bill'} · ${q.date}</span>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                <span style="font-weight:500;">${fmt(q.amount)}</span>
+                                <button class="btn btn-secondary" style="font-size:10px;padding:2px 6px;" onclick="unmatchQBOItem(${i},${qi})">✕</button>
+                            </div>
+                        </div>`).join('')}
+                    <div style="text-align:right;font-size:11px;color:#065f46;margin-top:6px;font-weight:500;">
+                        ${m.qboItems.length} invoice${m.qboItems.length !== 1 ? 's' : ''} matched
+                        · Total: ${fmt(m.qboItems.reduce((s, q) => s + q.amount, 0))}
                     </div>
-                    <button class="btn btn-secondary" style="font-size:11px;padding:4px 8px;" onclick="unmatchPair(${i})">Unmatch</button>
                 </div>`).join('')}
         </div>`;
 
@@ -799,7 +825,9 @@ function drawReconciliation() {
             <div>
                 <div style="font-weight:600;padding:10px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px 6px 0 0;font-size:13px;">
                     QBO Records (${unmatchedQBO.length}) &nbsp;
-                    <span style="font-weight:400;color:#6b7280;font-size:12px;">Click to select</span>
+                    <span style="font-weight:400;color:#6b7280;font-size:12px;">
+                        ${selectedQBOIds.size > 0 ? `<span style="color:#1e40af;">${selectedQBOIds.size} selected</span>` : 'Click to select one or more'}
+                    </span>
                 </div>
                 ${qboHTML}
             </div>
@@ -809,13 +837,22 @@ function drawReconciliation() {
 }        
 
 function selectBankItem(uid) {
-    selectedBankId = selectedBankId === uid ? null : uid;
+    if (selectedBankId === uid) {
+        selectedBankId = null;
+    } else {
+        selectedBankId = uid;
+        selectedQBOIds.clear(); // clear QBO selection when switching payment
+    }
     updateMatchBtn();
     drawReconciliation();
 }
 
 function selectQBOItem(uid) {
-    selectedQBOId = selectedQBOId === uid ? null : uid;
+    if (selectedQBOIds.has(uid)) {
+        selectedQBOIds.delete(uid);
+    } else {
+        selectedQBOIds.add(uid);
+    }
     updateMatchBtn();
     drawReconciliation();
 }
@@ -823,31 +860,63 @@ function selectQBOItem(uid) {
 function updateMatchBtn() {
     const btn = document.getElementById('match-btn');
     if (!btn) return;
-    const ready = selectedBankId && selectedQBOId;
+    const ready = selectedBankId && selectedQBOIds.size > 0;
     btn.disabled = !ready;
     btn.style.opacity = ready ? '1' : '0.4';
     btn.style.cursor = ready ? 'pointer' : 'not-allowed';
+    btn.textContent = ready && selectedQBOIds.size > 1
+        ? `Match to ${selectedQBOIds.size} Invoices`
+        : 'Match Selected';
 }
 
 function matchSelected() {
-    if (!selectedBankId || !selectedQBOId) return;
+    if (!selectedBankId || selectedQBOIds.size === 0) return;
     const bank = bankTransactionsData.find(t => t.uid === selectedBankId);
     const allQBO = [
-        ...invoicesData.map(i => ({ uid: 'inv-' + i.Id, type: 'invoice', date: i.TxnDate, amount: parseFloat(i.TotalAmt) || 0, label: i.CustomerRef?.name || 'Unknown' })),
-        ...billsData.map(b => ({ uid: 'bill-' + b.Id, type: 'bill', date: b.TxnDate, amount: parseFloat(b.TotalAmt) || 0, label: b.VendorRef?.name || 'Unknown' }))
+        ...invoicesData.map(i => ({
+            uid: 'inv-' + i.Id, type: 'invoice', date: i.TxnDate,
+            amount: parseFloat(i.TotalAmt) || 0, balance: parseFloat(i.Balance) || 0,
+            label: i.CustomerRef?.name || 'Unknown',
+            status: parseFloat(i.Balance) === 0 ? 'paid' : (parseFloat(i.Balance) < parseFloat(i.TotalAmt) ? 'partial' : 'pending')
+        })),
+        ...billsData.map(b => ({
+            uid: 'bill-' + b.Id, type: 'bill', date: b.TxnDate,
+            amount: parseFloat(b.TotalAmt) || 0, balance: parseFloat(b.Balance) || 0,
+            label: b.VendorRef?.name || 'Unknown',
+            status: parseFloat(b.Balance) === 0 ? 'paid' : (parseFloat(b.Balance) < parseFloat(b.TotalAmt) ? 'partial' : 'pending')
+        }))
     ];
-    const qbo = allQBO.find(r => r.uid === selectedQBOId);
-    if (bank && qbo) {
-        reconcileMatches.push({ bank, qbo });
+    const qboItems = allQBO.filter(r => selectedQBOIds.has(r.uid));
+    if (bank && qboItems.length > 0) {
+        // If this bank transaction already has a match group, add to it;
+        // otherwise create a new group.
+        const existing = reconcileMatches.find(m => m.bank.uid === bank.uid);
+        if (existing) {
+            qboItems.forEach(q => {
+                if (!existing.qboItems.find(e => e.uid === q.uid)) existing.qboItems.push(q);
+            });
+        } else {
+            reconcileMatches.push({ bank, qboItems });
+        }
         selectedBankId = null;
-        selectedQBOId = null;
+        selectedQBOIds.clear();
         updateMatchBtn();
         drawReconciliation();
     }
 }
 
-function unmatchPair(index) {
+// Remove an entire matched group
+function unmatchGroup(index) {
     reconcileMatches.splice(index, 1);
+    drawReconciliation();
+}
+
+// Remove a single QBO item from a group; if it was the last one, remove the group
+function unmatchQBOItem(groupIndex, itemIndex) {
+    reconcileMatches[groupIndex].qboItems.splice(itemIndex, 1);
+    if (reconcileMatches[groupIndex].qboItems.length === 0) {
+        reconcileMatches.splice(groupIndex, 1);
+    }
     drawReconciliation();
 }
 
