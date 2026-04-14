@@ -782,8 +782,15 @@ function drawReconciliation() {
             ${reconcileMatches.map((m, i) => `
                 <div style="padding:12px 14px;background:#d1fae5;border:1px solid #6ee7b7;border-radius:8px;margin-bottom:10px;">
                     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
-                        <span style="font-size:12px;font-weight:600;color:#065f46;text-transform:uppercase;letter-spacing:.04em;">Group ${i + 1}</span>
-                        <button class="btn btn-secondary" style="font-size:11px;padding:4px 8px;" onclick="unmatchGroup(${i})">Unmatch all</button>
+                        <span style="font-size:12px;font-weight:600;color:#065f46;text-transform:uppercase;letter-spacing:.04em;">
+                            Group ${i + 1}
+                            ${m.qboStatus === 'posted' ? '<span style="margin-left:8px;background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;border-radius:10px;padding:2px 8px;font-size:11px;font-weight:600;">✓ Posted to QBO</span>' : ''}
+                            ${m.qboStatus === 'error' ? `<span style="margin-left:8px;background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:10px;padding:2px 8px;font-size:11px;" title="${m.qboError || ''}">✕ QBO Error</span>` : ''}
+                        </span>
+                        <div style="display:flex;gap:6px;">
+                            ${m.qboStatus === 'posting' ? '<button class="btn btn-primary" style="font-size:11px;padding:4px 10px;opacity:.6;" disabled>Posting…</button>' : m.qboStatus !== 'posted' ? `<button class="btn btn-primary" style="font-size:11px;padding:4px 10px;" onclick="postGroupToQBO(${i})">Post to QBO</button>` : ''}
+                            <button class="btn btn-secondary" style="font-size:11px;padding:4px 8px;" onclick="unmatchGroup(${i})">Unmatch all</button>
+                        </div>
                     </div>
                     <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:start;">
                         <div>
@@ -966,6 +973,39 @@ function matchSelected() {
         updateMatchBtn();
         drawReconciliation();
     }
+}
+
+// Post a matched group to QBO as a Payment record
+async function postGroupToQBO(index) {
+    const group = reconcileMatches[index];
+    if (!group) return;
+
+    // Optimistic UI: mark as posting
+    group.qboStatus = 'posting';
+    drawReconciliation();
+
+    try {
+        const res = await fetch('/api/qbo/payment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bankItems: group.bankItems, qboItems: group.qboItems })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+            group.qboStatus = 'posted';
+            group.qboPaymentIds = data.payments.map(p => p.id);
+            group.qboError = null;
+        } else {
+            group.qboStatus = 'error';
+            group.qboError = (data.errors || []).map(e => e.error).join(', ') || data.error || 'Unknown error';
+        }
+    } catch (e) {
+        group.qboStatus = 'error';
+        group.qboError = e.message || 'Network error';
+    }
+
+    drawReconciliation();
 }
 
 // Remove an entire matched group

@@ -580,6 +580,86 @@ app.get('/api/qbo/classes', async (req, res) => {
   }
 });
 
+// ── QBO: Apply payment to one or more invoices ───────────────────────────────
+// Body: { bankItems: [...], qboItems: [...] }
+// Each qboItem must be an invoice (type === 'invoice').
+// All invoices must belong to the same customer (QBO restriction).
+// One QBO Payment is created per bank item; if there are multiple bank items
+// the invoice amounts are split proportionally across them.
+app.post('/api/qbo/payment', async (req, res) => {
+  if (!qboTokens?.access_token) {
+    return res.status(401).json({ error: 'QBO not connected' });
+  }
+
+  const { bankItems = [], qboItems = [] } = req.body;
+  const invoiceItems = qboItems.filter(q => q.type === 'invoice');
+
+  if (bankItems.length === 0) return res.status(400).json({ error: 'No bank payment provided' });
+  if (invoiceItems.length === 0) return res.status(400).json({ error: 'No invoices to apply payment to' });
+
+  try {
+    const headers = {
+      'Authorization': `Bearer ${qboTokens.access_token}`,
+      'Accept': 'application/json',
+      'Content-Type': 'application/json'
+    };
+    const base = `https://quickbooks.api.intuit.com/v3/company/${qboTokens.realmId}`;
+
+    // Fetch the first invoice to get the CustomerRef
+    const firstInvId = invoiceItems[0].uid.replace('inv-', '');
+    const invRes  = await fetch(`${base}/invoice/${firstInvId}`, { headers });
+    const invData = await invRes.json();
+    const customerRef = invData.Invoice?.CustomerRef;
+    if (!customerRef) {
+      return res.status(400).json({ error: 'Could not resolve customer from invoice' });
+    }
+
+    const createdPayments = [];
+    const errors = [];
+
+    for (const bankItem of bankItems) {
+      // Build one line per invoice; use the invoice balance as the amount applied
+      const lines = invoiceItems.map(inv => ({
+        Amount: inv.balance > 0 ? inv.balance : inv.amount,
+        LinkedTxn: [{ TxnId: inv.uid.replace('inv-', ''), TxnType: 'Invoice' }]
+      }));
+      const totalAmt = lines.reduce((s, l) => s + l.Amount, 0);
+
+      const paymentBody = {
+        CustomerRef: customerRef,
+        TotalAmt: totalAmt,
+        Line: lines,
+        ...(bankItem.accountId ? { DepositToAccountRef: { value: bankItem.accountId } } : {})
+      };
+
+      const payRes  = await fetch(`${base}/payment`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(paymentBody)
+      });
+      const payData = await payRes.json();
+
+      if (payData.Payment) {
+        createdPayments.push({ id: payData.Payment.Id, bankUid: bankItem.uid });
+        console.log(`QBO Payment created: ${payData.Payment.Id} for bank item ${bankItem.uid}`);
+      } else {
+        const msg = payData.Fault?.Error?.[0]?.Message || 'Unknown QBO error';
+        console.error('QBO Payment creation failed:', JSON.stringify(payData.Fault));
+        errors.push({ bankUid: bankItem.uid, error: msg });
+      }
+    }
+
+    if (createdPayments.length > 0) {
+      res.json({ success: true, payments: createdPayments, errors });
+    } else {
+      res.status(400).json({ success: false, errors });
+    }
+  } catch (error) {
+    console.error('Payment creation error:', error);
+    res.status(500).json({ error: error.message || 'Failed to create payment' });
+  }
+});
+
 app.get('/api/qbo/bank-transactions', async (req, res) => {
   if (!qboTokens?.access_token) {
     return res.status(401).json({ error: 'QBO not connected' });
